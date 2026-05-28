@@ -435,6 +435,11 @@ body {
   color: white;
   box-shadow: 0 2px 8px rgba(46,204,113,0.3);
 }
+.type-btn.active-transfer {
+  background: var(--primary);
+  color: white;
+  box-shadow: 0 2px 8px rgba(74,144,217,0.3);
+}
 
 /* ========== Amount Input ========== */
 .amount-input-wrap {

@@ -1,7 +1,7 @@
 // ========== 数据库层 - 基于 Dexie.js (IndexedDB) ==========
 
 const DB_NAME = 'AccountBookDB';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 // ========== 默认数据 ==========
 
@@ -19,7 +19,25 @@ const DEFAULT_EXPENSE_CATEGORIES = [
   { id: 'beauty', name: '美容', icon: '💄', type: 'expense', sortOrder: 11 },
   { id: 'clothes', name: '服饰', icon: '👔', type: 'expense', sortOrder: 12 },
   { id: 'pet', name: '宠物', icon: '🐱', type: 'expense', sortOrder: 13 },
-  { id: 'other_expense', name: '其他', icon: '📦', type: 'expense', sortOrder: 99 }
+  { id: 'other_expense', name: '其他', icon: '📦', type: 'expense', sortOrder: 99 },
+  // 子分类
+  { id: 'food_takeout', name: '外卖', icon: '🥡', type: 'expense', parentId: 'food', sortOrder: 1 },
+  { id: 'food_grocery', name: '买菜', icon: '🥬', type: 'expense', parentId: 'food', sortOrder: 2 },
+  { id: 'food_dinein', name: '食堂', icon: '🍱', type: 'expense', parentId: 'food', sortOrder: 3 },
+  { id: 'food_eatout', name: '下馆子', icon: '🍽️', type: 'expense', parentId: 'food', sortOrder: 4 },
+  { id: 'transit_bus', name: '公交', icon: '🚌', type: 'expense', parentId: 'transport', sortOrder: 1 },
+  { id: 'transit_metro', name: '地铁', icon: '🚇', type: 'expense', parentId: 'transport', sortOrder: 2 },
+  { id: 'transit_taxi', name: '打车', icon: '🚕', type: 'expense', parentId: 'transport', sortOrder: 3 },
+  { id: 'transit_gas', name: '加油', icon: '⛽', type: 'expense', parentId: 'transport', sortOrder: 4 },
+  { id: 'house_rent', name: '房租', icon: '🏠', type: 'expense', parentId: 'housing', sortOrder: 1 },
+  { id: 'house_utility', name: '水电', icon: '💡', type: 'expense', parentId: 'housing', sortOrder: 2 },
+  { id: 'house_property', name: '物业', icon: '🏢', type: 'expense', parentId: 'housing', sortOrder: 3 },
+  { id: 'shop_daily', name: '日用品', icon: '🧴', type: 'expense', parentId: 'shopping', sortOrder: 1 },
+  { id: 'shop_electronic', name: '电器数码', icon: '📱', type: 'expense', parentId: 'shopping', sortOrder: 2 },
+  { id: 'entertain_game', name: '游戏', icon: '🎮', type: 'expense', parentId: 'entertain', sortOrder: 1 },
+  { id: 'entertain_movie', name: '电影', icon: '🎬', type: 'expense', parentId: 'entertain', sortOrder: 2 },
+  { id: 'com_phone', name: '话费', icon: '📱', type: 'expense', parentId: 'communication', sortOrder: 1 },
+  { id: 'com_network', name: '网费', icon: '🌐', type: 'expense', parentId: 'communication', sortOrder: 2 },
 ];
 
 const DEFAULT_INCOME_CATEGORIES = [
@@ -59,18 +77,45 @@ async function initDB() {
     accounts: 'id, type, sortOrder',
     settings: 'key'
   }).upgrade(async tx => {
-    // 迁移：给所有旧交易加上 accountId = 'cash'
     await tx.table('transactions').toCollection().modify(t => {
       if (!t.accountId) t.accountId = 'cash';
     });
-    // 写入默认账户
     await tx.table('accounts').bulkAdd(DEFAULT_ACCOUNTS);
   });
 
-  // 确保默认分类存在 (v1已做的仍会保留)
+  db.version(3).stores({
+    transactions: '++id, type, categoryId, accountId, toAccountId, date, createdAt',
+    categories: 'id, type, parentId, sortOrder',
+    accounts: 'id, type, sortOrder',
+    settings: 'key'
+  }).upgrade(async tx => {
+    // 给所有已有分类加上 parentId = null
+    await tx.table('categories').toCollection().modify(c => {
+      if (c.parentId === undefined) c.parentId = null;
+    });
+    // 给交易加上 toAccountId
+    await tx.table('transactions').toCollection().modify(t => {
+      if (t.toAccountId === undefined) t.toAccountId = null;
+    });
+  });
+
+  // 确保默认分类存在
   const categoryCount = await db.categories.count();
   if (categoryCount === 0) {
     await db.categories.bulkAdd([...DEFAULT_EXPENSE_CATEGORIES, ...DEFAULT_INCOME_CATEGORIES]);
+  } else {
+    // 确保子分类存在（升级用户）
+    const subCount = await db.categories.where('parentId').notEqual(null).count();
+    if (subCount === 0) {
+      const subs = DEFAULT_EXPENSE_CATEGORIES.filter(c => c.parentId);
+      if (subs.length > 0) {
+        // 检查每个子分类是否已存在
+        for (const sub of subs) {
+          const exists = await db.categories.get(sub.id);
+          if (!exists) await db.categories.add(sub);
+        }
+      }
+    }
   }
 
   // 确保默认账户存在 (全新安装时)
@@ -100,12 +145,48 @@ async function recalcAccountBalance(accountId) {
   return balance;
 }
 
-// 重算所有账户余额
+// 重算所有账户余额（含转账）
 async function recalcAllBalances() {
+  // 先重置所有余额为0
   const accounts = await db.accounts.toArray();
-  for (const acc of accounts) {
-    await recalcAccountBalance(acc.id);
+  const balances = {};
+  accounts.forEach(a => { balances[a.id] = 0; });
+
+  // 遍历所有交易重新计算
+  const txs = await db.transactions.toArray();
+  txs.forEach(tx => {
+    const amt = tx.amount || 0;
+    if (tx.type === 'income' && tx.accountId) {
+      balances[tx.accountId] = (balances[tx.accountId] || 0) + amt;
+    } else if (tx.type === 'expense' && tx.accountId) {
+      balances[tx.accountId] = (balances[tx.accountId] || 0) - amt;
+    } else if (tx.type === 'transfer') {
+      if (tx.accountId) balances[tx.accountId] = (balances[tx.accountId] || 0) - amt;
+      if (tx.toAccountId) balances[tx.toAccountId] = (balances[tx.toAccountId] || 0) + amt;
+    }
+  });
+
+  for (const [id, bal] of Object.entries(balances)) {
+    await db.accounts.update(id, { balance: roundMoney(bal) });
   }
+}
+
+// 重算单个账户余额（含转账）
+async function recalcAccountBalance(accountId) {
+  const txs = await db.transactions.toArray();
+  let balance = 0;
+  txs.forEach(tx => {
+    const amt = tx.amount || 0;
+    if (tx.type === 'income' && tx.accountId === accountId) balance += amt;
+    else if (tx.type === 'expense' && tx.accountId === accountId) balance -= amt;
+    else if (tx.type === 'transfer') {
+      if (tx.accountId === accountId) balance -= amt;
+      if (tx.toAccountId === accountId) balance += amt;
+    }
+  });
+  balance = roundMoney(balance);
+  await db.accounts.update(accountId, { balance });
+  return balance;
 }
 
 // ========== 账户 CRUD ==========
@@ -139,20 +220,81 @@ async function deleteAccount(id) {
 
 // ========== 交易记录 CRUD（含余额联动） ==========
 
-// 添加交易（自动更新账户余额）
+// 搜索交易
+async function searchTransactions(query) {
+  if (!query || query.trim() === '') return [];
+  const q = query.toLowerCase().trim();
+  const all = await db.transactions.toArray();
+  const cats = await db.categories.toArray();
+  const catMap = {};
+  cats.forEach(c => { catMap[c.id] = c; });
+
+  return all.filter(tx => {
+    // 搜索金额
+    if (tx.amount.toString().includes(q)) return true;
+    // 搜索备注
+    if (tx.note && tx.note.toLowerCase().includes(q)) return true;
+    // 搜索分类名
+    const cat = catMap[tx.categoryId];
+    if (cat && cat.name.toLowerCase().includes(q)) return true;
+    // 搜索日期
+    if (tx.date && tx.date.includes(q)) return true;
+    return false;
+  }).sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt || '').localeCompare(a.createdAt || ''));
+}
+
+// 获取父级分类（不含子分类）
+async function getParentCategories(type = null) {
+  let cats = await db.categories.where('parentId').equals(null).sortBy('sortOrder');
+  if (type) cats = cats.filter(c => c.type === type);
+  return cats;
+}
+
+// 获取子分类
+async function getSubCategories(parentId) {
+  return await db.categories.where('parentId').equals(parentId).sortBy('sortOrder');
+}
+
+// 添加交易（自动更新账户余额，支持转账）
 async function addTransaction(tx) {
-  const id = await db.transactions.add({
+  const data = {
     ...tx,
     accountId: tx.accountId || 'cash',
+    toAccountId: tx.toAccountId || null,
+    type: tx.type || 'expense',
     createdAt: new Date().toISOString()
-  });
-  // 更新账户余额
-  const acc = await db.accounts.get(tx.accountId || 'cash');
-  if (acc) {
-    const delta = tx.type === 'income' ? tx.amount : -tx.amount;
-    await db.accounts.update(tx.accountId || 'cash', {
-      balance: roundMoney(acc.balance + delta)
-    });
+  };
+  const id = await db.transactions.add(data);
+
+  if (data.type === 'transfer') {
+    // 转账：fromAccount 扣钱，toAccount 加钱
+    const fromAcc = await db.accounts.get(data.accountId);
+    if (fromAcc) {
+      await db.accounts.update(data.accountId, {
+        balance: roundMoney(fromAcc.balance - data.amount)
+      });
+    }
+    const toAcc = await db.accounts.get(data.toAccountId);
+    if (toAcc) {
+      await db.accounts.update(data.toAccountId, {
+        balance: roundMoney(toAcc.balance + data.amount)
+      });
+    }
+  } else if (data.type === 'income') {
+    const acc = await db.accounts.get(data.accountId);
+    if (acc) {
+      await db.accounts.update(data.accountId, {
+        balance: roundMoney(acc.balance + data.amount)
+      });
+    }
+  } else {
+    // expense
+    const acc = await db.accounts.get(data.accountId);
+    if (acc) {
+      await db.accounts.update(data.accountId, {
+        balance: roundMoney(acc.balance - data.amount)
+      });
+    }
   }
   return id;
 }
@@ -403,7 +545,25 @@ const QIANJI_CAT_MAP = {
   '医疗': 'medical',
   '娱乐': 'entertain',
   '餐饮': 'food',
-  '购物': 'shopping'
+  '购物': 'shopping',
+  // 二级分类映射
+  '外卖': 'food_takeout',
+  '买菜': 'food_grocery',
+  '食堂': 'food_dinein',
+  '下馆子': 'food_eatout',
+  '公交': 'transit_bus',
+  '地铁': 'transit_metro',
+  '打车': 'transit_taxi',
+  '加油': 'transit_gas',
+  '房租': 'house_rent',
+  '水电': 'house_utility',
+  '物业': 'house_property',
+  '日用品': 'shop_daily',
+  '电器数码': 'shop_electronic',
+  '游戏': 'entertain_game',
+  '电影': 'entertain_movie',
+  '话费': 'com_phone',
+  '网费': 'com_network'
 };
 
 // 钱迹类型 → 我们的类型
@@ -566,7 +726,7 @@ async function importFromQianjiCSV(csvText, onProgress) {
       newTxs.push({
         amount: roundMoney(row.amount),
         type: ourType,
-        categoryId: findCategoryId(row.category, ourType),
+        categoryId: findCategoryId(row.subCategory || row.category, ourType),
         accountId: accountId,
         date: date,
         note: note,

@@ -79,6 +79,12 @@
 
     <!-- ===== 账单 ===== -->
     <div class="page" id="page-bills">
+      <!-- 搜索栏 -->
+      <div style="padding:8px 16px">
+        <input type="search" id="search-input" placeholder="🔍 搜索金额、备注、分类..."
+               style="width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:20px;font-size:14px;outline:none;background:var(--card)"
+               oninput="doSearch(this.value)">
+      </div>
       <div class="stat-controls">
         <button class="stat-nav-btn" id="bills-month-prev">‹</button>
         <span class="stat-month-label" id="bills-month-label">2024年1月</span>
@@ -272,6 +278,7 @@
       <div class="type-toggle">
         <button class="type-btn active-expense" onclick="setTxType('expense')">支出</button>
         <button class="type-btn" onclick="setTxType('income')">收入</button>
+        <button class="type-btn" onclick="setTxType('transfer')">转账</button>
       </div>
 
       <!-- 金额输入 -->
@@ -281,7 +288,22 @@
       </div>
 
       <!-- 分类选择 -->
-      <div class="category-grid" id="category-grid"></div>
+      <div id="category-section">
+        <label style="display:block;font-size:13px;color:var(--text-secondary);margin-bottom:6px">分类</label>
+        <div class="category-grid" id="category-grid"></div>
+      </div>
+
+      <!-- 转账模式 -->
+      <div id="transfer-section" style="display:none">
+        <div class="form-field">
+          <label>从账户转出</label>
+          <div class="account-selector" id="transfer-from"></div>
+        </div>
+        <div class="form-field">
+          <label>转入账户</label>
+          <div class="account-selector" id="transfer-to"></div>
+        </div>
+      </div>
 
       <!-- 账户选择 -->
       <div class="form-field">

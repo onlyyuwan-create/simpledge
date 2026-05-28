@@ -314,23 +314,16 @@ async function renderTransactionList(containerId, txs, showDateGroup) {
 function renderTxItem(tx, catMap, accMap) {
   const cat = catMap[tx.categoryId] || { name: '其他', icon: '📄' };
   const acc = accMap[tx.accountId] || null;
-  const typeClass = tx.type === 'expense' ? 'expense' : 'income';
-  const sign = tx.type === 'expense' ? '-' : '+';
+  const sign = tx.type === 'expense' ? '-' : (tx.type === 'transfer' ? '-' : '+');
+  const typeClass = tx.type === 'expense' ? 'expense' : (tx.type === 'transfer' ? 'expense' : 'income');
 
-  return `
-    <div class="transaction-item" onclick="openEditTransaction('${tx.id}')">
-      <div class="tx-cat-icon ${typeClass}">${cat.icon}</div>
-      <div class="tx-info">
-        <div class="tx-cat-name">${cat.name}</div>
-        <div class="tx-note">${tx.note || '无备注'}</div>
-        <div class="tx-account-tag">${acc ? acc.icon + ' ' + acc.name : ''}</div>
-      </div>
-      <div style="text-align:right">
-        <div class="tx-amount ${typeClass}">${sign}${tx.amount.toFixed(2)}</div>
-        <div class="tx-time">${tx.date.slice(8)}</div>
-      </div>
-    </div>
-  `;
+  // 转账特殊显示
+  if (tx.type === 'transfer') {
+    const toAcc = tx.toAccountId ? accMap[tx.toAccountId] : null;
+    return `\n    <div class="transaction-item" onclick="openEditTransaction('${tx.id}')">\n      <div class="tx-cat-icon" style="background:#E8F0FE">🔄</div>\n      <div class="tx-info">\n        <div class="tx-cat-name">转账</div>\n        <div class="tx-note">${acc ? acc.name : ''} → ${toAcc ? toAcc.name : ''}</div>\n      </div>\n      <div style="text-align:right">\n        <div class="tx-amount expense">${sign}${tx.amount.toFixed(2)}</div>\n        <div class="tx-time">${tx.date.slice(8)}</div>\n      </div>\n    </div>\n  `;
+  }
+
+  return `\n    <div class="transaction-item" onclick="openEditTransaction('${tx.id}')">\n      <div class="tx-cat-icon ${typeClass}">${cat.icon}</div>\n      <div class="tx-info">\n        <div class="tx-cat-name">${cat.name}</div>\n        <div class="tx-note">${tx.note || ''}</div>\n        <div class="tx-account-tag">${acc ? acc.icon + ' ' + acc.name : ''}</div>\n      </div>\n      <div style="text-align:right">\n        <div class="tx-amount ${typeClass}">${sign}${tx.amount.toFixed(2)}</div>\n        <div class="tx-time">${tx.date.slice(8)}</div>\n      </div>\n    </div>\n  `;
 }
 
 // ========== 统计页面 ==========
@@ -496,6 +489,36 @@ function checkForUpdate() {
     });
 }
 
+// ========== 搜索 ==========
+let searchTimer = null;
+function doSearch(query) {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(async () => {
+    if (!query || query.trim() === '') {
+      await showBills();
+      return;
+    }
+    const results = await searchTransactions(query);
+    const cats = await getAllCategories();
+    const catMap = {};
+    cats.forEach(c => { catMap[c.id] = c; });
+    const accounts = await getAllAccounts();
+    const accMap = {};
+    accounts.forEach(a => { accMap[a.id] = a; });
+
+    const container = document.getElementById('bills-tx-list');
+    if (results.length === 0) {
+      container.innerHTML = `<div class="empty-state"><div class="empty-icon">🔍</div><div class="empty-text">没有找到匹配的记录</div></div>`;
+      return;
+    }
+    let html = `<div class="date-group-header">找到 ${results.length} 条结果</div>`;
+    results.slice(0, 50).forEach(tx => {
+      html += renderTxItem(tx, catMap, accMap);
+    });
+    container.innerHTML = html;
+  }, 300);
+}
+
 // ========== 记一笔（打开模态框）==========
 function openAddTransaction() {
   editingTransactionId = null;
@@ -543,17 +566,68 @@ function setTxType(type) {
   currentTxType = type;
   const btns = document.querySelectorAll('.type-btn');
   btns.forEach(b => b.className = 'type-btn');
-  btns[0].classList.add(type === 'expense' ? 'active-expense' : '');
-  btns[1].classList.add(type === 'income' ? 'active-income' : '');
-  loadCategories(type);
+  if (type === 'expense') { btns[0].classList.add('active-expense'); }
+  else if (type === 'income') { btns[1].classList.add('active-income'); }
+  else { btns[2].classList.add('active-transfer'); }
+
+  // 转账模式：隐藏分类，显示双账户选择器
+  const catSection = document.getElementById('category-section');
+  const transferSection = document.getElementById('transfer-section');
+  if (type === 'transfer') {
+    if (catSection) catSection.style.display = 'none';
+    if (transferSection) transferSection.style.display = 'block';
+    selectedCategoryId = 'transfer';
+    loadTransferAccounts();
+  } else {
+    if (catSection) catSection.style.display = 'block';
+    if (transferSection) transferSection.style.display = 'none';
+    loadCategories(type);
+  }
 }
 
-// 加载分类
+// 加载父分类（含子分类提示）
 async function loadCategories(type) {
   const grid = document.getElementById('category-grid');
-  const cats = await getAllCategories(type);
+  const parents = await getParentCategories(type);
   let html = '';
-  cats.forEach(cat => {
+  parents.forEach(cat => {
+    const hasSub = cat.id === 'food' || cat.id === 'transport' || cat.id === 'housing'
+               || cat.id === 'shopping' || cat.id === 'entertain' || cat.id === 'communication';
+    html += `
+      <div class="cat-item ${selectedCategoryId === cat.id ? 'selected' : ''}"
+           data-cat-id="${cat.id}" onclick="selectParentCategory('${cat.id}')">
+        <span class="cat-icon">${cat.icon}</span>
+        <span class="cat-name">${cat.name}</span>
+        ${hasSub ? '<span style="font-size:8px;color:var(--text-light)">▾</span>' : ''}
+      </div>
+    `;
+  });
+  grid.innerHTML = html;
+}
+
+// 选中父分类，展开子分类
+async function selectParentCategory(parentId) {
+  const subs = await getSubCategories(parentId);
+  if (subs.length > 0) {
+    // 展开子分类
+    showSubCategories(parentId, subs);
+  } else {
+    // 直接选中
+    selectCategory(parentId);
+  }
+}
+
+// 显示子分类
+async function showSubCategories(parentId, subs) {
+  const grid = document.getElementById('category-grid');
+  const parent = await db.categories.get(parentId);
+  let html = `
+    <div class="cat-item" onclick="loadCategories('${currentTxType}')" style="grid-column:1">
+      <span style="font-size:18px">←</span>
+      <span class="cat-name">返回</span>
+    </div>
+  `;
+  subs.forEach(cat => {
     html += `
       <div class="cat-item ${selectedCategoryId === cat.id ? 'selected' : ''}"
            data-cat-id="${cat.id}" onclick="selectCategory('${cat.id}')">
@@ -563,6 +637,39 @@ async function loadCategories(type) {
     `;
   });
   grid.innerHTML = html;
+}
+
+// 加载转账账户选择器
+async function loadTransferAccounts() {
+  const fromContainer = document.getElementById('transfer-from');
+  const toContainer = document.getElementById('transfer-to');
+  const accounts = await getAllAccounts();
+  if (accounts.length < 2) { showToast('需要至少2个账户才能转账'); return; }
+
+  const renderOpts = (container, selectedId, onChange) => {
+    let html = '';
+    accounts.forEach(acc => {
+      const sel = acc.id === selectedId ? 'selected' : '';
+      html += \`<div class="account-option \${sel}" data-acc-id="\${acc.id}">\${acc.icon} \${acc.name}</div>\`;
+    });
+    container.innerHTML = html;
+    container.querySelectorAll('.account-option').forEach(el => {
+      el.onclick = () => {
+        container.querySelectorAll('.account-option').forEach(e => e.classList.remove('selected'));
+        el.classList.add('selected');
+        onChange(el.dataset.accId);
+      };
+    });
+  };
+
+  if (!window._transferFrom) window._transferFrom = accounts[0].id;
+  if (!window._transferTo) window._transferTo = accounts.length > 1 ? accounts[1].id : accounts[0].id;
+  if (window._transferFrom === window._transferTo) {
+    window._transferTo = accounts.length > 1 ? accounts[1].id : accounts[0].id;
+  }
+
+  renderOpts(fromContainer, window._transferFrom, id => { window._transferFrom = id; });
+  renderOpts(toContainer, window._transferTo, id => { window._transferTo = id; });
 }
 
 // 加载账户选择器
@@ -615,24 +722,41 @@ async function saveTransaction() {
   const date = document.getElementById('tx-date').value;
 
   if (!amount || amount <= 0) { showToast('请输入金额'); return; }
-  if (!selectedCategoryId) { showToast('请选择分类'); return; }
+  if (currentTxType !== 'transfer' && !selectedCategoryId) { showToast('请选择分类'); return; }
 
-  // 如果没有账户，默认第一个
-  if (!selectedAccountId) {
-    const accounts = await getAllAccounts();
-    if (accounts.length === 0) { showToast('请先添加账户（设置页）'); return; }
-    selectedAccountId = accounts[0].id;
+  let txData;
+  if (currentTxType === 'transfer') {
+    // 转账
+    const fromId = window._transferFrom;
+    const toId = window._transferTo;
+    if (!fromId || !toId || fromId === toId) { showToast('请选择两个不同的账户'); return; }
+    txData = {
+      amount: Math.round(amount * 100) / 100,
+      type: 'transfer',
+      categoryId: 'transfer',
+      accountId: fromId,
+      toAccountId: toId,
+      date: date,
+      note: note || ('转账'),
+      time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+    };
+  } else {
+    // 如果没有账户，默认第一个
+    if (!selectedAccountId) {
+      const accounts = await getAllAccounts();
+      if (accounts.length === 0) { showToast('请先添加账户（设置页）'); return; }
+      selectedAccountId = accounts[0].id;
+    }
+    txData = {
+      amount: Math.round(amount * 100) / 100,
+      type: currentTxType,
+      categoryId: selectedCategoryId,
+      accountId: selectedAccountId,
+      date: date,
+      note: note,
+      time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+    };
   }
-
-  const txData = {
-    amount: Math.round(amount * 100) / 100,
-    type: currentTxType,
-    categoryId: selectedCategoryId,
-    accountId: selectedAccountId,
-    date: date,
-    note: note,
-    time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-  };
 
   try {
     if (editingTransactionId) {
