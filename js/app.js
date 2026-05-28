@@ -606,58 +606,56 @@ function setTxType(type) {
   }
 }
 
-// 加载父分类（含子分类提示）
+// 加载父分类（含展开子分类）
 async function loadCategories(type) {
   const grid = document.getElementById('category-grid');
   const parents = await getParentCategories(type);
+  const allCats = await db.categories.toArray();
+  const subParentIds = new Set(allCats.filter(c => c.parentId).map(c => c.parentId));
+
   let html = '';
-  parents.forEach(cat => {
-    const hasSub = cat.id === 'food' || cat.id === 'transport' || cat.id === 'housing'
-               || cat.id === 'shopping' || cat.id === 'entertain' || cat.id === 'communication';
-    html += `
-      <div class="cat-item ${selectedCategoryId === cat.id ? 'selected' : ''}"
-           data-cat-id="${cat.id}" onclick="selectParentCategory('${cat.id}')">
-        <span class="cat-icon">${cat.icon}</span>
-        <span class="cat-name">${cat.name}</span>
-        ${hasSub ? '<span style="font-size:8px;color:var(--text-light)">▾</span>' : ''}
-      </div>
-    `;
-  });
+  for (const cat of parents) {
+    const hasSub = subParentIds.has(cat.id);
+    let subsHtml = '';
+    if (hasSub) {
+      const subs = await getSubCategories(cat.id);
+      subsHtml = '<div class="sub-cat-row" id="subs-' + cat.id + '" style="display:none;grid-column:1/-1;display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:2px 0 6px">';
+      subs.forEach(sub => {
+        subsHtml += '<div class="cat-item sub-item" data-cat-id="' + sub.id + '" style="padding:6px 2px" onclick="event.stopPropagation();doSelectCategory(\'' + sub.id + '\')">'
+          + '<span class="cat-icon">' + sub.icon + '</span><span class="cat-name">' + sub.name + '</span></div>';
+      });
+      subsHtml += '</div>';
+      // Initially hide subs
+      subsHtml = subsHtml.replace('style="display:none;grid-column:1/-1;display:grid', 'style="display:none;grid-column:1/-1');
+    }
+    html += '<div class="cat-item cat-parent" data-cat-id="' + cat.id + '" onclick="toggleSubCats(\'' + cat.id + '\')">'
+      + '<span class="cat-icon">' + cat.icon + '</span><span class="cat-name">' + cat.name + '</span>'
+      + (hasSub ? '<span style="font-size:10px;color:var(--text-light);margin-left:auto">▼</span>' : '')
+      + '</div>' + subsHtml;
+  }
   grid.innerHTML = html;
 }
 
-// 选中父分类，展开子分类
-async function selectParentCategory(parentId) {
-  const subs = await getSubCategories(parentId);
-  if (subs.length > 0) {
-    // 展开子分类
-    showSubCategories(parentId, subs);
+// 展开/收起子分类
+function toggleSubCats(parentId) {
+  const row = document.getElementById('subs-' + parentId);
+  if (row) {
+    const isHidden = row.style.display === 'none' || row.style.display === '';
+    row.style.display = isHidden ? 'grid' : 'none';
   } else {
-    // 直接选中
-    selectCategory(parentId);
+    // 无子分类，直接选中
+    doSelectCategory(parentId);
   }
 }
 
-// 显示子分类
-async function showSubCategories(parentId, subs) {
-  const grid = document.getElementById('category-grid');
-  const parent = await db.categories.get(parentId);
-  let html = `
-    <div class="cat-item" onclick="loadCategories('${currentTxType}')" style="grid-column:1">
-      <span style="font-size:18px">←</span>
-      <span class="cat-name">返回</span>
-    </div>
-  `;
-  subs.forEach(cat => {
-    html += `
-      <div class="cat-item ${selectedCategoryId === cat.id ? 'selected' : ''}"
-           data-cat-id="${cat.id}" onclick="selectCategory('${cat.id}')">
-        <span class="cat-icon">${cat.icon}</span>
-        <span class="cat-name">${cat.name}</span>
-      </div>
-    `;
-  });
-  grid.innerHTML = html;
+// 选中分类
+function doSelectCategory(id) {
+  selectedCategoryId = id;
+  document.querySelectorAll('.cat-item').forEach(el => el.classList.remove('selected'));
+  const el = document.querySelector(`.cat-item[data-cat-id="${id}"]`);
+  if (el) el.classList.add('selected');
+  // 收起所有子分类展开
+  document.querySelectorAll('.sub-cat-row').forEach(r => r.style.display = 'none');
 }
 
 // 加载转账账户选择器
@@ -717,11 +715,9 @@ async function loadAccountSelector(selectedId) {
   container.innerHTML = html;
 }
 
+// 选中分类（兼容旧调用）
 function selectCategory(id) {
-  selectedCategoryId = id;
-  document.querySelectorAll('.cat-item').forEach(el => el.classList.remove('selected'));
-  const el = document.querySelector(`.cat-item[data-cat-id="${id}"]`);
-  if (el) el.classList.add('selected');
+  doSelectCategory(id);
 }
 
 function highlightCategory(id) {
@@ -936,7 +932,8 @@ function importFromQianjiCSV() {
 
       let result;
       try {
-        result = await importFromQianjiCSV(text);
+        // 注意: 调用的是 db.js 里的 importFromQianjiCSV
+        result = await window.importFromQianjiCSV(text);
       } catch(e) {
         showToast('导入失败: ' + e.message);
         return;
