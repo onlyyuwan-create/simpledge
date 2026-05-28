@@ -1,4 +1,4 @@
-name: 构建 APK
+name: 构建 APK (PWABuilder API)
 
 on:
   push:
@@ -7,26 +7,46 @@ on:
 
 jobs:
   build:
-    name: 打包度支简账 APK
+    name: 打包度支简账
     runs-on: ubuntu-latest
 
     steps:
-      - name: 检出代码
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: 安装 PWABuilder CLI
-        run: npm install -g @pwabuilder/cli
-
-      - name: 生成 APK
+      - name: 通过 PWABuilder API 生成 APK
         run: |
-          mkdir -p output
-          npx pwabuilder package \
-            --platform android \
-            --url https://onlyyuwan-create.github.io/simpledge/ \
-            --output output/
+          # 调用 PWABuilder 云 API 生成 Android APK
+          curl -s -X POST "https://pwabuilder.com/api/v1/package/android" \
+            -H "Content-Type: application/json" \
+            -d '{"url":"https://onlyyuwan-create.github.io/simpledge/"}' \
+            -o package_response.json
+          
+          cat package_response.json
+
+      - name: 下载 APK
+        run: |
+          # 从 API 响应中提取下载链接
+          URL=$(python3 -c "
+import json
+with open('package_response.json') as f:
+    d = json.load(f)
+print(d.get('url', d.get('downloadUrl', d.get('package_url', ''))))
+print(d.get('message', ''))
+" 2>/dev/null || echo "")
+          
+          if [ -n "$URL" ]; then
+            curl -sL "$URL" -o simpledge.apk
+            ls -la simpledge.apk
+            mkdir -p output
+            mv simpledge.apk output/
+          else
+            echo "API返回:"
+            cat package_response.json
+          fi
 
       - name: 上传 APK
         uses: actions/upload-artifact@v4
+        if: success()
         with:
           name: 度支简账-APK
           path: output/*.apk

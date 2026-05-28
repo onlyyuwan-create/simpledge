@@ -664,7 +664,7 @@ async function loadTransferAccounts() {
     let html = '';
     accounts.forEach(acc => {
       const sel = acc.id === selectedId ? 'selected' : '';
-      html += \`<div class="account-option \${sel}" data-acc-id="\${acc.id}">\${acc.icon} \${acc.name}</div>\`;
+      html += '<div class="account-option ' + sel + '" data-acc-id="' + acc.id + '">' + acc.icon + ' ' + acc.name + '</div>';
     });
     container.innerHTML = html;
     container.querySelectorAll('.account-option').forEach(el => {
