@@ -45,6 +45,7 @@ jobs:
         with:
           arguments: assembleRelease
           build-root-directory: simpledge-android
+          gradle-version: 8.1
 
       - name: 签名 APK
         run: |
