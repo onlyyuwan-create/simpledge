@@ -606,57 +606,32 @@ function setTxType(type) {
   }
 }
 
-// 加载父分类（含展开子分类）
+// 加载分类（平铺显示，父分类+子分类一起展示）
 async function loadCategories(type) {
   const grid = document.getElementById('category-grid');
-  const parents = await getParentCategories(type);
-  const allCats = await db.categories.toArray();
-  const subParentIds = new Set(allCats.filter(c => c.parentId).map(c => c.parentId));
-
+  const allCats = await getAllCategories(type);
   let html = '';
-  for (const cat of parents) {
-    const hasSub = subParentIds.has(cat.id);
-    let subsHtml = '';
-    if (hasSub) {
-      const subs = await getSubCategories(cat.id);
-      subsHtml = '<div class="sub-cat-row" id="subs-' + cat.id + '" style="display:none;grid-column:1/-1;display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:2px 0 6px">';
-      subs.forEach(sub => {
-        subsHtml += '<div class="cat-item sub-item" data-cat-id="' + sub.id + '" style="padding:6px 2px" onclick="event.stopPropagation();doSelectCategory(\'' + sub.id + '\')">'
-          + '<span class="cat-icon">' + sub.icon + '</span><span class="cat-name">' + sub.name + '</span></div>';
-      });
-      subsHtml += '</div>';
-      // Initially hide subs
-      subsHtml = subsHtml.replace('style="display:none;grid-column:1/-1;display:grid', 'style="display:none;grid-column:1/-1');
-    }
-    html += '<div class="cat-item cat-parent" data-cat-id="' + cat.id + '" onclick="toggleSubCats(\'' + cat.id + '\')">'
-      + '<span class="cat-icon">' + cat.icon + '</span><span class="cat-name">' + cat.name + '</span>'
-      + (hasSub ? '<span style="font-size:10px;color:var(--text-light);margin-left:auto">▼</span>' : '')
-      + '</div>' + subsHtml;
-  }
+  allCats.forEach(cat => {
+    const sel = cat.id === selectedCategoryId ? 'selected' : '';
+    html += `<div class="cat-item ${sel}" data-cat-id="${cat.id}" onclick="pickCategory('${cat.id}')">
+      <span class="cat-icon">${cat.icon}</span>
+      <span class="cat-name">${cat.name}</span>
+    </div>`;
+  });
   grid.innerHTML = html;
 }
 
-// 展开/收起子分类
-function toggleSubCats(parentId) {
-  const row = document.getElementById('subs-' + parentId);
-  if (row) {
-    const isHidden = row.style.display === 'none' || row.style.display === '';
-    row.style.display = isHidden ? 'grid' : 'none';
-  } else {
-    // 无子分类，直接选中
-    doSelectCategory(parentId);
-  }
-}
-
-// 选中分类
-function doSelectCategory(id) {
+// 选择分类
+function pickCategory(id) {
   selectedCategoryId = id;
   document.querySelectorAll('.cat-item').forEach(el => el.classList.remove('selected'));
   const el = document.querySelector(`.cat-item[data-cat-id="${id}"]`);
   if (el) el.classList.add('selected');
-  // 收起所有子分类展开
-  document.querySelectorAll('.sub-cat-row').forEach(r => r.style.display = 'none');
 }
+
+// 兼容旧调用
+function doSelectCategory(id) { pickCategory(id); }
+function toggleSubCats(id) { pickCategory(id); }
 
 // 加载转账账户选择器
 async function loadTransferAccounts() {
@@ -921,41 +896,41 @@ function importDataFromFile() {
 
 // ========== 从钱迹CSV导入 ==========
 function importFromQianjiCSV() {
-  const input = document.createElement('input');
-  input.type = 'file'; input.accept = '.csv,.txt';
-  input.onchange = async (e) => {
+  const input = document.getElementById('csv-file-input');
+  if (input) { input.click(); return; }
+  // 兜底：动态创建
+  const el = document.createElement('input');
+  el.type = 'file'; el.id = 'csv-file-input'; el.accept = '.csv,.txt';
+  el.style.display = 'none';
+  el.onchange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    try {
-      const text = await file.text();
-      showToast('⏳ 正在导入 ' + file.name + '...');
-
-      let result;
-      try {
-        // 注意: 调用的是 db.js 里的 importFromQianjiCSV
-        result = await window.importFromQianjiCSV(text);
-      } catch(e) {
-        showToast('导入失败: ' + e.message);
-        return;
-      }
-
-      const msg = [
-        `✅ 导入完成！`,
-        `📄 解析 ${result.totalRows} 条记录`,
-        `💳 导入 ${result.importedTxs} 条交易`,
-        `(${result.transfersCreated} 笔转账已拆分)`,
-        `🏦 新建 ${result.newAccounts} 个账户`
-      ].join('\n');
-
-      showConfirm('导入结果', msg, async () => {
-        closeModal();
-        await refreshCurrentPage();
-      });
-    } catch (e) {
-      showToast('导入失败: ' + e.message);
-    }
+    await handleCSVFile(file);
   };
-  input.click();
+  document.body.appendChild(el);
+  el.click();
+}
+
+// CSV 文件选择后的处理
+async function handleCSVFile(file) {
+  try {
+    const text = await file.text();
+    showToast('⏳ 正在导入 ' + file.name + '...');
+    let result = await window.parseQianjiCSV(text);
+    const msg = [
+      '✅ 导入完成！',
+      '📄 解析 ' + result.totalRows + ' 条记录',
+      '💳 导入 ' + result.importedTxs + ' 条交易',
+      (result.transfersCreated ? '(' + result.transfersCreated + ' 笔转账已拆分)' : ''),
+      '🏦 新建 ' + result.newAccounts + ' 个账户'
+    ].filter(s => s).join('\n');
+    showConfirm('导入结果', msg, async () => {
+      closeModal();
+      await refreshCurrentPage();
+    });
+  } catch (e) {
+    showToast('导入失败: ' + e.message);
+  }
 }
 
 // ========== 清空数据 ==========

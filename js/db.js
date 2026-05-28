@@ -574,7 +574,7 @@ function mapQianjiType(type) {
 }
 
 // 从钱迹CSV导入
-async function importFromQianjiCSV(csvText, onProgress) {
+async function parseQianjiCSV(csvText, onProgress) {
   // 解析CSV
   const lines = csvText.split('\n').filter(l => l.trim());
   if (lines.length < 2) throw new Error('CSV格式错误');
