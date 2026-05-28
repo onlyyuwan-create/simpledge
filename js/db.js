@@ -635,7 +635,7 @@ async function importFromQianjiCSV(csvText, onProgress) {
     if (name.includes('信用卡') || name === '花呗') return 'credit';
     if (name.includes('银行') || name === '招商银行' || name === '建设银行' || name === '民生银行') return 'debit';
     if (name.includes('现金')) return 'cash';
-    if (name.includes('公交') || name.includes('手环')) return 'debit';
+    if (name.includes('公交') || name.includes('手环') || name.includes('地铁') || name.includes('卡')) return 'prepaid';
     return 'digital';
   }
 
@@ -645,7 +645,7 @@ async function importFromQianjiCSV(csvText, onProgress) {
     if (name.includes('银行') || name === '招商银行' || name === '建设银行' || name === '民生银行') return '🏦';
     if (name.includes('现金')) return '💵';
     if (name.includes('花呗')) return '💳';
-    if (name.includes('公交') || name.includes('手环')) return '🚌';
+    if (name.includes('公交') || name.includes('手环') || name.includes('地铁')) return '🚌';
     return '🏦';
   }
 

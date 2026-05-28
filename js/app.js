@@ -64,26 +64,31 @@ async function initApp() {
   }
 }
 
-// ========== Tab 切换 ==========
+// ========== Tab 切换（带错误保护）==========
 async function switchTab(tab) {
-  currentTab = tab;
+  try {
+    currentTab = tab;
+    document.querySelectorAll('.tab-item').forEach(el => el.classList.remove('active'));
+    const tabEl = document.querySelector(`.tab-item[data-tab="${tab}"]`);
+    if (tabEl) tabEl.classList.add('active');
 
-  document.querySelectorAll('.tab-item').forEach(el => el.classList.remove('active'));
-  const tabEl = document.querySelector(`.tab-item[data-tab="${tab}"]`);
-  if (tabEl) tabEl.classList.add('active');
+    document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
+    const pageEl = document.getElementById(`page-${tab}`);
+    if (pageEl) pageEl.classList.add('active');
 
-  document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
-  const pageEl = document.getElementById(`page-${tab}`);
-  if (pageEl) pageEl.classList.add('active');
+    const titles = { home: '度支简账', bills: '账单', assets: '资产', stats: '统计', settings: '设置' };
+    const titleEl = document.getElementById('page-title');
+    if (titleEl) titleEl.textContent = titles[tab] || '记账本';
 
-  const titles = { home: '度支简账', bills: '账单', assets: '资产', stats: '统计', settings: '设置' };
-  document.getElementById('page-title').textContent = titles[tab] || '记账本';
-
-  if (tab === 'home') await showHome();
-  else if (tab === 'bills') await showBills();
-  else if (tab === 'assets') await showAssets();
-  else if (tab === 'stats') await showStats();
-  else if (tab === 'settings') showSettings();
+    if (tab === 'home') await showHome();
+    else if (tab === 'bills') await showBills();
+    else if (tab === 'assets') await showAssets();
+    else if (tab === 'stats') await showStats();
+    else if (tab === 'settings') showSettings();
+  } catch (e) {
+    console.error('switchTab error:', e);
+    showToast('页面加载异常，请刷新重试');
+  }
 }
 
 // ========== 首页 ==========
@@ -134,7 +139,7 @@ async function showAssets() {
     return;
   }
 
-  const typeNames = { cash: '现金', debit: '借记卡', credit: '信用卡', digital: '电子账户', investment: '投资' };
+  const typeNames = { cash: '现金', debit: '借记卡', credit: '信用卡', digital: '电子账户', prepaid: '储值卡', investment: '投资' };
 
   let html = '';
   accounts.forEach(acc => {
@@ -481,9 +486,11 @@ function statNextMonth() {
 // ========== 设置页面 ==========
 function showSettings() {
   const aboutEl = document.getElementById('about-version');
-  if (aboutEl) {
-    aboutEl.textContent = `我的记账本 ${APP_VERSION} · 数据仅存本地`;
-  }
+  if (aboutEl) aboutEl.textContent = `度支简账 ${APP_VERSION} · 数据仅存本地`;
+  const iconEl = document.getElementById('dark-mode-icon');
+  const descEl = document.getElementById('dark-mode-desc');
+  if (iconEl) iconEl.textContent = isDark ? '☀️' : '🌙';
+  if (descEl) descEl.textContent = isDark ? '已开启夜间模式' : '点击切换夜间模式';
 }
 
 // 检查更新（刷新页面）
@@ -875,17 +882,17 @@ function openAddCategory() {
 async function exportDataJSON() {
   try {
     const json = await exportData('json');
-    downloadFile(json, `记账本_${formatDate(new Date())}.json`, 'application/json');
-    showToast('已导出 JSON');
-  } catch (e) { showToast('导出失败'); }
+    downloadFile(json, `度支简账_${formatDate(new Date())}.json`, 'application/json');
+    showToast('✅ 导出成功！请在浏览器下载记录中查看');
+  } catch (e) { showToast('导出失败: ' + e.message); }
 }
 
 async function exportDataCSV() {
   try {
     const csv = await exportData('csv');
-    downloadFile(csv, `记账本_${formatDate(new Date())}.csv`, 'text/csv');
-    showToast('已导出 CSV');
-  } catch (e) { showToast('导出失败'); }
+    downloadFile(csv, `度支简账_${formatDate(new Date())}.csv`, 'text/csv');
+    showToast('✅ 导出成功！请在浏览器下载记录中查看');
+  } catch (e) { showToast('导出失败: ' + e.message); }
 }
 
 function downloadFile(content, filename, mimeType) {
@@ -927,7 +934,13 @@ function importFromQianjiCSV() {
       const text = await file.text();
       showToast('⏳ 正在导入 ' + file.name + '...');
 
-      const result = await importFromQianjiCSV(text);
+      let result;
+      try {
+        result = await importFromQianjiCSV(text);
+      } catch(e) {
+        showToast('导入失败: ' + e.message);
+        return;
+      }
 
       const msg = [
         `✅ 导入完成！`,
