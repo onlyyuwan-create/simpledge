@@ -762,6 +762,38 @@ function importDataFromFile() {
   input.click();
 }
 
+// ========== 从钱迹CSV导入 ==========
+function importFromQianjiCSV() {
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = '.csv,.txt';
+  input.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      showToast('⏳ 正在导入 ' + file.name + '...');
+
+      const result = await importFromQianjiCSV(text);
+
+      const msg = [
+        `✅ 导入完成！`,
+        `📄 解析 ${result.totalRows} 条记录`,
+        `💳 导入 ${result.importedTxs} 条交易`,
+        `(${result.transfersCreated} 笔转账已拆分)`,
+        `🏦 新建 ${result.newAccounts} 个账户`
+      ].join('\n');
+
+      showConfirm('导入结果', msg, async () => {
+        closeModal();
+        await refreshCurrentPage();
+      });
+    } catch (e) {
+      showToast('导入失败: ' + e.message);
+    }
+  };
+  input.click();
+}
+
 // ========== 清空数据 ==========
 function clearAllData() {
   showConfirm('清空数据', '确定要清空所有记录吗？\n此操作不可撤销！', async () => {

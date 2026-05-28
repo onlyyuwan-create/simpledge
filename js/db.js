@@ -381,3 +381,275 @@ async function importData(jsonStr) {
     accCount: data.accounts ? data.accounts.length : 0
   };
 }
+
+// ========== 钱迹CSV导入 ==========
+
+// 钱迹分类 → 度支简账分类映射
+const QIANJI_CAT_MAP = {
+  '三餐': 'food',
+  '交通': 'transport',
+  '其它': 'other_expense',
+  '住房': 'housing',
+  '学习': 'education',
+  '日用品': 'shopping',
+  '话费网费': 'communication',
+  '工资': 'salary',
+  '美妆': 'beauty',
+  '请客送礼': 'social',
+  '零食': 'food',
+  '电器数码': 'shopping',
+  '会员': 'entertain',
+  '衣服': 'clothes',
+  '医疗': 'medical',
+  '娱乐': 'entertain',
+  '餐饮': 'food',
+  '购物': 'shopping'
+};
+
+// 钱迹类型 → 我们的类型
+function mapQianjiType(type) {
+  if (type === '支出') return 'expense';
+  if (type === '收入') return 'income';
+  return null; // 转账、还款等特殊处理
+}
+
+// 从钱迹CSV导入
+async function importFromQianjiCSV(csvText, onProgress) {
+  // 解析CSV
+  const lines = csvText.split('\n').filter(l => l.trim());
+  if (lines.length < 2) throw new Error('CSV格式错误');
+
+  // 解析标题行（去掉引号）
+  const headers = parseCSVLine(lines[0]);
+  
+  // 找到各列的索引
+  const colIdx = {
+    time: headers.indexOf('时间'),
+    category: headers.indexOf('分类'),
+    subCategory: headers.indexOf('二级分类'),
+    type: headers.indexOf('类型'),
+    amount: headers.indexOf('金额'),
+    account1: headers.indexOf('账户1'),
+    account2: headers.indexOf('账户2'),
+    note: headers.indexOf('备注')
+  };
+
+  if (colIdx.time < 0 || colIdx.amount < 0 || colIdx.type < 0) {
+    throw new Error('无法识别CSV列名，请确认是钱迹导出的CSV');
+  }
+
+  // 解析所有行
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = parseCSVLine(lines[i]);
+    if (cols.length <= colIdx.amount) continue;
+    rows.push({
+      time: cols[colIdx.time] || '',
+      category: cols[colIdx.category] || '',
+      subCategory: cols[colIdx.subCategory] || '',
+      type: cols[colIdx.type] || '',
+      amount: parseFloat(cols[colIdx.amount]) || 0,
+      account1: cols[colIdx.account1] || '',
+      account2: cols[colIdx.account2] || '',
+      note: cols[colIdx.note] || ''
+    });
+  }
+
+  if (rows.length === 0) throw new Error('没有找到有效数据');
+
+  // ---- Step 1: 创建/获取账户 ----
+  const accountNames = new Set();
+  rows.forEach(r => {
+    if (r.account1) accountNames.add(r.account1);
+    if (r.account2 && r.type === '转账') accountNames.add(r.account2);
+  });
+
+  // 现有的账户
+  const existingAccs = await db.accounts.toArray();
+  const existingAccNames = new Set(existingAccs.map(a => a.name));
+  const accNameMap = {}; // 钱迹账户名 → 我们的账户id
+  existingAccs.forEach(a => { accNameMap[a.name] = a.id; });
+
+  // 账户类型推断
+  function guessAccType(name) {
+    if (name.includes('信用卡') || name === '花呗') return 'credit';
+    if (name.includes('银行') || name === '招商银行' || name === '建设银行' || name === '民生银行') return 'debit';
+    if (name.includes('现金')) return 'cash';
+    if (name.includes('公交') || name.includes('手环')) return 'debit';
+    return 'digital';
+  }
+
+  function guessAccIcon(name) {
+    if (name.includes('微信')) return '💚';
+    if (name.includes('支付宝')) return '💙';
+    if (name.includes('银行') || name === '招商银行' || name === '建设银行' || name === '民生银行') return '🏦';
+    if (name.includes('现金')) return '💵';
+    if (name.includes('花呗')) return '💳';
+    if (name.includes('公交') || name.includes('手环')) return '🚌';
+    return '🏦';
+  }
+
+  // 创建不存在的账户
+  const newAccounts = [];
+  let sortOrder = existingAccs.length + 1;
+  for (const name of accountNames) {
+    if (!accNameMap[name]) {
+      const id = 'qj_' + name.replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '_');
+      accNameMap[name] = id;
+      newAccounts.push({
+        id,
+        name,
+        icon: guessAccIcon(name),
+        type: guessAccType(name),
+        balance: 0,
+        sortOrder: sortOrder++
+      });
+    }
+  }
+  if (newAccounts.length > 0) {
+    await db.accounts.bulkAdd(newAccounts);
+  }
+
+  // ---- Step 2: 确保分类存在 ----
+  const existingCats = await db.categories.toArray();
+  const existingCatNames = new Set(existingCats.map(c => c.name));
+  const newCats = [];
+
+  const usedCatNames = new Set();
+  rows.forEach(r => {
+    if (r.category && !existingCatNames.has(r.category) && !usedCatNames.has(r.category)) {
+      usedCatNames.add(r.category);
+      const mappedId = QIANJI_CAT_MAP[r.category];
+      // 如果映射不存在，使用ID查找
+      if (!mappedId || !existingCats.find(c => c.id === mappedId)) {
+        // 需要创建新分类
+        newCats.push({
+          id: 'qj_' + r.category,
+          name: r.category,
+          icon: '📦',
+          type: 'expense',
+          sortOrder: 99
+        });
+      }
+    }
+  });
+  if (newCats.length > 0) {
+    await db.categories.bulkAdd(newCats);
+  }
+
+  // 刷新分类列表
+  const allCats = await db.categories.toArray();
+
+  // 查找分类ID的函数
+  function findCategoryId(name, type) {
+    if (!name) return type === 'income' ? 'other_income' : 'other_expense';
+    const mappedId = QIANJI_CAT_MAP[name];
+    if (mappedId && allCats.find(c => c.id === mappedId)) return mappedId;
+    const byName = allCats.find(c => c.name === name);
+    if (byName) return byName.id;
+    const qjCat = allCats.find(c => c.id === 'qj_' + name);
+    if (qjCat) return qjCat.id;
+    return type === 'income' ? 'other_income' : 'other_expense';
+  }
+
+  // ---- Step 3: 创建交易 ----
+  const newTxs = [];
+  let transfersCreated = 0;
+
+  for (const row of rows) {
+    const ourType = mapQianjiType(row.type);
+    const date = row.time.slice(0, 10);
+    const note = row.note || '';
+
+    if (ourType === 'expense' || ourType === 'income') {
+      const accountId = accNameMap[row.account1] || 'cash';
+      newTxs.push({
+        amount: roundMoney(row.amount),
+        type: ourType,
+        categoryId: findCategoryId(row.category, ourType),
+        accountId: accountId,
+        date: date,
+        note: note,
+        time: row.time.slice(11, 16),
+        createdAt: row.time
+      });
+    } else if (row.type === '转账') {
+      // 转账：A→B，相当于从A支出、向B收入
+      const fromAcc = accNameMap[row.account1];
+      const toAcc = accNameMap[row.account2];
+      if (fromAcc && toAcc) {
+        newTxs.push({
+          amount: roundMoney(row.amount),
+          type: 'expense',
+          categoryId: 'other_expense',
+          accountId: fromAcc,
+          date: date,
+          note: '转账→' + row.account2 + (note ? ' ' + note : ''),
+          time: row.time.slice(11, 16),
+          createdAt: row.time
+        });
+        newTxs.push({
+          amount: roundMoney(row.amount),
+          type: 'income',
+          categoryId: 'other_income',
+          accountId: toAcc,
+          date: date,
+          note: '转账←' + row.account1 + (note ? ' ' + note : ''),
+          time: row.time.slice(11, 16),
+          createdAt: row.time
+        });
+        transfersCreated++;
+      }
+    }
+    // 其他类型（还款、债务等）暂当支出记录
+    else if (row.amount > 0) {
+      const accountId = accNameMap[row.account1] || 'cash';
+      newTxs.push({
+        amount: roundMoney(row.amount),
+        type: 'expense',
+        categoryId: 'other_expense',
+        accountId: accountId,
+        date: date,
+        note: '[' + row.type + '] ' + note,
+        time: row.time.slice(11, 16),
+        createdAt: row.time
+      });
+    }
+  }
+
+  // 批量导入
+  if (newTxs.length > 0) {
+    await db.transactions.bulkAdd(newTxs);
+  }
+
+  // 重算所有账户余额
+  await recalcAllBalances();
+
+  return {
+    totalRows: rows.length,
+    importedTxs: newTxs.length,
+    newAccounts: newAccounts.length,
+    transfersCreated,
+    skipped: rows.length - newTxs.length
+  };
+}
+
+// CSV行解析（处理引号内逗号）
+function parseCSVLine(line) {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      inQuotes = !inQuotes;
+    } else if (ch === ',' && !inQuotes) {
+      result.push(current);
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  result.push(current);
+  return result;
+}
