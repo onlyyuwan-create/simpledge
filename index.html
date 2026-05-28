@@ -152,7 +152,7 @@
         <button class="stat-nav-btn" onclick="statNextMonth()">›</button>
       </div>
 
-      <div class="stat-summary-cards">
+      <div class="stat-summary-cards" style="grid-template-columns:1fr 1fr 1fr">
         <div class="stat-card">
           <div class="stat-label">总支出</div>
           <div class="stat-amount expense" id="stat-total-expense">0.00</div>
@@ -160,6 +160,10 @@
         <div class="stat-card">
           <div class="stat-label">总收入</div>
           <div class="stat-amount income" id="stat-total-income">0.00</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">结余</div>
+          <div class="stat-amount total" id="stat-balance">0.00</div>
         </div>
       </div>
 

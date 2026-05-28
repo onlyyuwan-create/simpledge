@@ -352,21 +352,25 @@ async function showStats() {
 }
 
 async function loadStatsData() {
-  const stats = await getMonthStats(currentStatYear, currentStatMonth);
-  document.getElementById('stat-total-expense').textContent = stats.totalExpense.toFixed(2);
-  document.getElementById('stat-total-income').textContent = stats.totalIncome.toFixed(2);
-  document.getElementById('stat-balance').textContent = stats.balance.toFixed(2);
+  try {
+    const stats = await getMonthStats(currentStatYear, currentStatMonth);
+    if (document.getElementById('stat-total-expense')) document.getElementById('stat-total-expense').textContent = stats.totalExpense.toFixed(2);
+    if (document.getElementById('stat-total-income')) document.getElementById('stat-total-income').textContent = stats.totalIncome.toFixed(2);
+    if (document.getElementById('stat-balance')) document.getElementById('stat-balance').textContent = stats.balance.toFixed(2);
 
-  await renderCategoryBreakdown(stats);
+    await renderCategoryBreakdown(stats);
 
-  if (currentStatChart === 'pie') {
-    await renderPieChart(stats, currentStatView);
-    document.getElementById('trend-chart-container').style.display = 'none';
-    document.getElementById('pie-chart-container').style.display = 'block';
-  } else {
-    await renderTrendChart();
-    document.getElementById('pie-chart-container').style.display = 'none';
-    document.getElementById('trend-chart-container').style.display = 'block';
+    if (currentStatChart === 'pie') {
+      await renderPieChart(stats, currentStatView);
+      if (document.getElementById('trend-chart-container')) document.getElementById('trend-chart-container').style.display = 'none';
+      if (document.getElementById('pie-chart-container')) document.getElementById('pie-chart-container').style.display = 'block';
+    } else {
+      await renderTrendChart();
+      if (document.getElementById('pie-chart-container')) document.getElementById('pie-chart-container').style.display = 'none';
+      if (document.getElementById('trend-chart-container')) document.getElementById('trend-chart-container').style.display = 'block';
+    }
+  } catch(e) {
+    console.error('统计页异常:', e);
   }
 }
 
@@ -1203,16 +1207,18 @@ async function clearBudget() {
 }
 
 async function renderBudget() {
-  const now = new Date();
-  const stats = await getMonthStats(now.getFullYear(), now.getMonth() + 1);
-  const budget = parseFloat(await getSetting('monthlyBudget', '0'));
+  try {
+    const now = new Date();
+    const stats = await getMonthStats(now.getFullYear(), now.getMonth() + 1);
+    const budget = parseFloat(await getSetting('monthlyBudget', '0'));
 
-  const spentEl = document.getElementById('budget-spent');
-  const remainEl = document.getElementById('budget-remain');
-  const barEl = document.getElementById('budget-bar');
-  const statusEl = document.getElementById('budget-status');
+    const spentEl = document.getElementById('budget-spent');
+    const remainEl = document.getElementById('budget-remain');
+    const barEl = document.getElementById('budget-bar');
+    const statusEl = document.getElementById('budget-status');
+    if (!spentEl || !remainEl || !barEl || !statusEl) return;
 
-  if (budget <= 0) {
+    if (budget <= 0) {
     statusEl.textContent = '未设置';
     barEl.style.width = '0%';
     spentEl.textContent = `¥${stats.totalExpense.toFixed(2)}`;
@@ -1226,6 +1232,7 @@ async function renderBudget() {
   barEl.className = 'bp-fill' + (pct > 90 ? ' d' : pct > 70 ? ' w' : '');
   spentEl.textContent = `已支出 ¥${stats.totalExpense.toFixed(2)}`;
   remainEl.textContent = `预算 ¥${budget.toFixed(2)} · 剩余 ¥${Math.max(0, budget - stats.totalExpense).toFixed(2)}`;
+  } catch(e) { console.error('renderBudget error:', e); }
 }
 
 // ========== 报销管理 ==========
