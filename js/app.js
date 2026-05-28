@@ -493,20 +493,43 @@ function showSettings() {
   if (descEl) descEl.textContent = isDark ? '已开启夜间模式' : '点击切换夜间模式';
 }
 
-// 检查更新（刷新页面）
+// ========== 检查更新（APK + PWA） ==========
 function checkForUpdate() {
-  // 检查 Service Worker 是否有更新
-  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-    navigator.serviceWorker.controller.postMessage({ type: 'CHECK_UPDATE' });
-  }
-  // 尝试从网络获取最新 index.html 对比
-  fetch('./index.html?' + Date.now(), { cache: 'no-store' })
-    .then(r => r.text())
-    .then(html => {
-      showToast('已检查更新，刷新页面以应用');
+  showToast('⏳ 正在检查更新...');
+  // 获取当前版本
+  const currentVer = APP_VERSION;
+  // 从 GitHub Pages 获取最新版本信息
+  fetch('https://onlyyuwan-create.github.io/simpledge/version.json?' + Date.now(), { cache: 'no-store' })
+    .then(r => r.json())
+    .then(data => {
+      if (data.versionCode && data.versionCode > 0) {
+        const newVer = data.versionName || 'v' + data.versionCode;
+        showConfirm('发现新版本 ' + newVer,
+          '当前版本: ' + currentVer + '\n最新版本: ' + newVer + '\n\n' + (data.changelog || '') + '\n\n是否下载更新？',
+          () => {
+            // 下载新版 APK
+            if (data.updateUrl) {
+              showToast('⏳ 正在下载更新...');
+              // 创建一个隐藏的下载链接
+              const a = document.createElement('a');
+              a.href = data.updateUrl;
+              a.download = '度支简账.apk';
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              showToast('✅ 下载已开始，请安装');
+            } else {
+              showToast('更新地址未配置');
+            }
+          }
+        );
+      } else {
+        showToast('当前已是最新版本');
+      }
     })
     .catch(() => {
-      showToast('离线模式，连接网络后可检查更新');
+      // 离线，用简化检查
+      showToast('当前已是最新版本 (离线)');
     });
 }
 

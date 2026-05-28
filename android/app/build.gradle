@@ -10,8 +10,8 @@ android {
         applicationId "com.simpledge.app"
         minSdk 24
         targetSdk 33
-        versionCode 1
-        versionName "2.0"
+        versionCode project.hasProperty('versionCode') ? project.property('versionCode') as Integer : 1
+        versionName project.hasProperty('versionName') ? project.property('versionName') : "2.0"
     }
     buildTypes {
         release {

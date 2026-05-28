@@ -32,34 +32,21 @@ jobs:
       - name: 设置 Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: 接受 SDK 许可
-        run: yes | $ANDROID_HOME/tools/bin/sdkmanager --licenses > /dev/null 2>&1 || true
-        env:
-          ANDROID_HOME: /usr/local/lib/android/sdk
-
-      - name: 安装 SDK 33
-        run: $ANDROID_HOME/tools/bin/sdkmanager "platforms;android-33" "build-tools;33.0.2" > /dev/null 2>&1 || true
-        env:
-          ANDROID_HOME: /usr/local/lib/android/sdk
-
-      - name: 构建 APK
+      - name: 构建 APK（自动版本号）
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: assembleRelease
+          arguments: assembleRelease -PversionCode=${{ github.run_number }} -PversionName="2.0.${{ github.run_number }}"
           build-root-directory: android
           gradle-version: 8.1
 
-      - name: 签名 APK (V2)
+      - name: 签名 APK
         run: |
-          # 生成签名密钥
           keytool -genkey -v -keystore ${{ github.workspace }}/simpledge.keystore \
             -alias simpledge -keyalg RSA -keysize 2048 -validity 10000 \
             -storepass simpledge123 -keypass simpledge123 \
             -dname "CN=Simpledge,O=Simpledge,C=CN" 2>/dev/null
-          # 查找 apksigner（兼容不同 SDK 路径）
           APKSIGNER=$(find /usr/local/lib/android -name "apksigner" 2>/dev/null | head -1)
           if [ -n "$APKSIGNER" ]; then
-            echo "Using apksigner: $APKSIGNER"
             $APKSIGNER sign \
               --ks ${{ github.workspace }}/simpledge.keystore \
               --ks-pass pass:simpledge123 \
@@ -67,7 +54,6 @@ jobs:
               --v2-signing-enabled true \
               android/app/build/outputs/apk/release/app-release-unsigned.apk
           else
-            echo "apksigner not found, using jarsigner"
             jarsigner -keystore ${{ github.workspace }}/simpledge.keystore \
               -storepass simpledge123 -sigalg SHA256withRSA -digestalg SHA-256 \
               android/app/build/outputs/apk/release/app-release-unsigned.apk simpledge
@@ -75,8 +61,14 @@ jobs:
           cp android/app/build/outputs/apk/release/app-release-unsigned.apk \
              android/app/build/outputs/apk/release/度支简账.apk
 
-      - name: 上传 APK
+      - name: 生成版本信息
+        run: |
+          echo '{"versionCode":${{ github.run_number }},"versionName":"2.0.${{ github.run_number }}","updateUrl":"https://github.com/onlyyuwan-create/simpledge/releases/latest/download/度支简账.apk","changelog":"自动构建 #${{ github.run_number }}"}' > android/app/build/outputs/apk/release/version.json
+
+      - name: 上传 APK + 版本信息
         uses: actions/upload-artifact@v4
         with:
           name: 度支简账-APK
-          path: android/app/build/outputs/apk/release/度支简账.apk
+          path: |
+            android/app/build/outputs/apk/release/度支简账.apk
+            android/app/build/outputs/apk/release/version.json
