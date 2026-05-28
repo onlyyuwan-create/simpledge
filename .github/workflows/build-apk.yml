@@ -49,17 +49,21 @@ jobs:
           build-root-directory: android
           gradle-version: 8.1
 
-      - name: 签名 APK
+      - name: 签名 APK (V2方案)
         run: |
           # 生成签名密钥
           keytool -genkey -v -keystore ${{ github.workspace }}/simpledge.keystore \
             -alias simpledge -keyalg RSA -keysize 2048 -validity 10000 \
             -storepass simpledge123 -keypass simpledge123 \
             -dname "CN=Simpledge,O=Simpledge,C=CN" 2>/dev/null
-          # 签名
-          jarsigner -keystore ${{ github.workspace }}/simpledge.keystore \
-            -storepass simpledge123 -sigalg SHA256withRSA -digestalg SHA-256 \
-            android/app/build/outputs/apk/release/app-release-unsigned.apk simpledge
+          # 用 apksigner V2签名（兼容 Android 7+）
+          $ANDROID_HOME/build-tools/33.0.2/apksigner sign \
+            --ks ${{ github.workspace }}/simpledge.keystore \
+            --ks-pass pass:simpledge123 \
+            --ks-key-alias simpledge \
+            --v2-signing-enabled true \
+            --v3-signing-enabled true \
+            android/app/build/outputs/apk/release/app-release-unsigned.apk
           # 输出
           cp android/app/build/outputs/apk/release/app-release-unsigned.apk \
              android/app/build/outputs/apk/release/度支简账.apk
