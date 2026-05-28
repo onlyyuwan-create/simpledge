@@ -3,85 +3,30 @@ name: 构建 APK
 on:
   push:
     branches: [ master ]
+  workflow_dispatch:
 
 jobs:
   build:
     name: 打包度支简账 APK
     runs-on: ubuntu-latest
-    env:
-      ANDROID_HOME: /usr/local/lib/android/sdk
 
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: 复制网页文件到 Android 资源目录
+      - name: 安装 PWABuilder CLI
+        run: npm install -g @pwabuilder/cli
+
+      - name: 生成 APK
         run: |
-          mkdir -p simpledge-android/app/src/main/assets
-          cp -r index.html simpledge-android/app/src/main/assets/
-          cp -r css simpledge-android/app/src/main/assets/
-          cp -r js simpledge-android/app/src/main/assets/
-          cp -r icons simpledge-android/app/src/main/assets/
-          cp manifest.json simpledge-android/app/src/main/assets/
-          cp sw.js simpledge-android/app/src/main/assets/
+          mkdir -p output
+          npx pwabuilder package \
+            --platform android \
+            --url https://onlyyuwan-create.github.io/simpledge/ \
+            --output output/
 
-      - name: 设置 JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: 17
-          distribution: 'temurin'
-
-      - name: 设置 Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: 接受 SDK 许可
-        run: |
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1 || true
-          yes | $ANDROID_HOME/tools/bin/sdkmanager --licenses > /dev/null 2>&1 || true
-        env:
-          ANDROID_HOME: /usr/local/lib/android/sdk
-
-      - name: 安装 Android SDK 33
-        run: |
-          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-33" "build-tools;33.0.2" > /dev/null 2>&1 || true
-        env:
-          ANDROID_HOME: /usr/local/lib/android/sdk
-
-      - name: 构建 APK
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: assembleRelease
-          build-root-directory: simpledge-android
-          gradle-version: 8.1
-
-      - name: 签名 APK
-        run: |
-          # 生成调试用签名密钥
-          keytool -genkey -v -keystore ${{ github.workspace }}/simpledge.keystore \
-            -alias simpledge -keyalg RSA -keysize 2048 \
-            -validity 10000 \
-            -storepass simpledge123 -keypass simpledge123 \
-            -dname "CN=Simpledge, OU=App, O=Simpledge, L=Unknown, ST=Unknown, C=CN"
-          jarsigner -verbose -sigalg SHA1withRSA -digestalg SHA1 \
-            -keystore ${{ github.workspace }}/simpledge.keystore \
-            -storepass simpledge123 \
-            ${{ github.workspace }}/simpledge-android/app/build/outputs/apk/release/app-release-unsigned.apk \
-            simpledge
-
-      - name: 对齐 APK (zipalign)
-        run: |
-          cp ${{ github.workspace }}/simpledge-android/app/build/outputs/apk/release/app-release-unsigned.apk \
-             ${{ github.workspace }}/simpledge-android/app/build/outputs/apk/release/Simpledge.apk
-
-      - name: 上传 APK 到 GitHub Actions
+      - name: 上传 APK
         uses: actions/upload-artifact@v4
         with:
           name: 度支简账-APK
-          path: ${{ github.workspace }}/simpledge-android/app/build/outputs/apk/release/Simpledge.apk
-
-      - name: 创建发布 （仅打标签时触发）
-        uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/v')
-        with:
-          files: ${{ github.workspace }}/simpledge-android/app/build/outputs/apk/release/Simpledge.apk
-          generate_release_notes: true
+          path: output/*.apk
