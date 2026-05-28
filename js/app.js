@@ -541,7 +541,7 @@ function doSearch(query) {
 }
 
 // ========== 记一笔（打开模态框）==========
-function openAddTransaction() {
+async function openAddTransaction() {
   editingTransactionId = null;
   currentTxType = 'expense';
   selectedCategoryId = null;
@@ -553,8 +553,8 @@ function openAddTransaction() {
   document.getElementById('tx-note').value = '';
   document.getElementById('tx-date').value = formatDate(new Date());
 
-  setTxType('expense');
-  loadAccountSelector(null);
+  await setTxType('expense');
+  await loadAccountSelector(null);
 
   document.getElementById('tx-modal').classList.add('open');
 }
@@ -583,26 +583,33 @@ async function openEditTransaction(id) {
 }
 
 // 设置交易类型
-function setTxType(type) {
-  currentTxType = type;
-  const btns = document.querySelectorAll('.type-btn');
-  btns.forEach(b => b.className = 'type-btn');
-  if (type === 'expense') { btns[0].classList.add('active-expense'); }
-  else if (type === 'income') { btns[1].classList.add('active-income'); }
-  else { btns[2].classList.add('active-transfer'); }
+async function setTxType(type) {
+  try {
+    currentTxType = type;
+    const btns = document.querySelectorAll('.type-btn');
+    btns.forEach(b => b.className = 'type-btn');
+    if (type === 'expense') { btns[0].classList.add('active-expense'); }
+    else if (type === 'income') { btns[1].classList.add('active-income'); }
+    else { btns[2].classList.add('active-transfer'); }
 
-  // 转账模式：隐藏分类，显示双账户选择器
-  const catSection = document.getElementById('category-section');
-  const transferSection = document.getElementById('transfer-section');
-  if (type === 'transfer') {
-    if (catSection) catSection.style.display = 'none';
-    if (transferSection) transferSection.style.display = 'block';
-    selectedCategoryId = 'transfer';
-    loadTransferAccounts();
-  } else {
-    if (catSection) catSection.style.display = 'block';
-    if (transferSection) transferSection.style.display = 'none';
-    loadCategories(type);
+    const catSection = document.getElementById('category-section');
+    const transferSection = document.getElementById('transfer-section');
+    const accountSection = document.getElementById('account-select-section');
+    if (type === 'transfer') {
+      if (catSection) catSection.style.display = 'none';
+      if (transferSection) transferSection.style.display = 'block';
+      if (accountSection) accountSection.style.display = 'none';
+      selectedCategoryId = 'transfer';
+      await loadTransferAccounts();
+    } else {
+      if (catSection) catSection.style.display = 'block';
+      if (transferSection) transferSection.style.display = 'none';
+      if (accountSection) accountSection.style.display = 'block';
+      if (type === 'expense') selectedCategoryId = null;
+      await loadCategories(type);
+    }
+  } catch(e) {
+    console.error('setTxType error:', e);
   }
 }
 
@@ -1263,6 +1270,27 @@ function getWeekDay(dateStr) {
 function closeModal() {
   document.querySelectorAll('.modal-overlay').forEach(el => el.classList.remove('open'));
   document.querySelectorAll('.dialog-overlay').forEach(el => el.classList.remove('open'));
+
+}
+
+// 页面加载时监听返回键
+window.addEventListener('popstate', function(e) {
+  // 如果有任何模态框打开，关闭它并阻止导航
+  const openModal = document.querySelector('.modal-overlay.open, .dialog-overlay.open');
+  if (openModal) {
+    closeModal();
+    // 阻止真正的页面返回
+    if (!e.state || !e.state.modalOpen) {
+      window.history.pushState({ modalOpen: true }, '');
+    }
+    return;
+  }
+});
+
+// 在打开模态框时记录历史状态
+function openModalWithBackSupport(modalId) {
+  document.getElementById(modalId).classList.add('open');
+  window.history.pushState({ modalOpen: true }, '');
 }
 
 function showToast(msg) {
