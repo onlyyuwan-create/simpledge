@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#4A90D9">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="mobile-web-app-capable" content="yes">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icons/icon-192.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.svg">
+  <title>我的记账本</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="app-shell" id="app">
+  <!-- ==================== Header ==================== -->
+  <header class="header">
+    <span class="header-title" id="page-title">我的记账本</span>
+    <div></div>
+  </header>
+
+  <!-- ==================== Main Content ==================== -->
+  <main class="main-content" id="main-content">
+
+    <!-- ===== 首页 ===== -->
+    <div class="page active" id="page-home">
+      <!-- 今日概览 -->
+      <div class="summary-section">
+        <div style="font-size:14px;color:var(--text-secondary)">今日</div>
+        <div class="summary-grid">
+          <div class="summary-card">
+            <div class="label">支出</div>
+            <div class="amount expense" id="today-expense">0.00</div>
+          </div>
+          <div class="summary-card">
+            <div class="label">收入</div>
+            <div class="amount income" id="today-income">0.00</div>
+          </div>
+          <div class="summary-card">
+            <div class="label">结余</div>
+            <div class="amount total" id="today-balance">0.00</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 本月概览 -->
+      <div class="summary-section">
+        <div style="font-size:14px;color:var(--text-secondary)">本月</div>
+        <div class="summary-grid">
+          <div class="summary-card">
+            <div class="label">支出</div>
+            <div class="amount expense" id="month-expense">0.00</div>
+          </div>
+          <div class="summary-card">
+            <div class="label">收入</div>
+            <div class="amount income" id="month-income">0.00</div>
+          </div>
+          <div class="summary-card">
+            <div class="label">笔数</div>
+            <div class="amount total" id="month-count">0</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 最近交易 -->
+      <div class="section-title">
+        <span>最近记录</span>
+      </div>
+      <div class="transaction-list" id="recent-tx-list">
+        <div class="empty-state">
+          <div class="empty-icon">📋</div>
+          <div class="empty-text">还没有记录，点击下方 + 记一笔</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 账单 ===== -->
+    <div class="page" id="page-bills">
+      <div class="stat-controls">
+        <button class="stat-nav-btn" id="bills-month-prev">‹</button>
+        <span class="stat-month-label" id="bills-month-label">2024年1月</span>
+        <button class="stat-nav-btn" id="bills-month-next">›</button>
+      </div>
+
+      <div class="filter-chips">
+        <span class="chip active" data-filter="all">全部</span>
+        <span class="chip" data-filter="expense">支出</span>
+        <span class="chip" data-filter="income">收入</span>
+      </div>
+
+      <div class="transaction-list" id="bills-tx-list">
+        <div class="empty-state">
+          <div class="empty-icon">📋</div>
+          <div class="empty-text">暂无记录</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 资产 ===== -->
+    <div class="page" id="page-assets">
+      <!-- 资产概览 -->
+      <div class="assets-overview">
+        <div class="total-assets-card">
+          <div class="total-label">总资产</div>
+          <div class="total-amount" id="total-assets-amount">0.00</div>
+          <div class="total-sub" id="total-assets-sub">点击账户查看流水</div>
+        </div>
+        <div class="account-grid" id="account-grid"></div>
+        <div class="add-account-btn-wrap">
+          <button class="add-account-btn" onclick="openAddAccountModal()">➕ 添加账户</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 统计 ===== -->
+    <div class="page" id="page-stats">
+      <div class="stat-controls">
+        <button class="stat-nav-btn" onclick="statPrevMonth()">‹</button>
+        <span class="stat-month-label" id="stat-month-label">2024年1月</span>
+        <button class="stat-nav-btn" onclick="statNextMonth()">›</button>
+      </div>
+
+      <div class="stat-summary-cards">
+        <div class="stat-card">
+          <div class="stat-label">总支出</div>
+          <div class="stat-amount expense" id="stat-total-expense">0.00</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">总收入</div>
+          <div class="stat-amount income" id="stat-total-income">0.00</div>
+        </div>
+      </div>
+
+      <div class="stat-view-toggle">
+        <button class="stat-view-btn active" data-view="expense">支出分类</button>
+        <button class="stat-view-btn" data-view="income">收入分类</button>
+      </div>
+
+      <div class="stat-view-toggle" style="margin-top:-8px">
+        <button class="stat-chart-btn active" data-chart="pie">饼图</button>
+        <button class="stat-chart-btn" data-chart="trend">趋势</button>
+      </div>
+
+      <div class="chart-section">
+        <div class="chart-container" id="pie-chart-container">
+          <div class="chart-title">分类分布</div>
+          <canvas id="expense-chart"></canvas>
+        </div>
+        <div class="chart-container" id="trend-chart-container" style="display:none">
+          <div class="chart-title">每日趋势</div>
+          <canvas id="trend-chart"></canvas>
+        </div>
+      </div>
+
+      <div class="category-breakdown" id="cat-breakdown"></div>
+    </div>
+
+    <!-- ===== 设置 ===== -->
+    <div class="page" id="page-settings">
+      <div class="settings-list">
+        <div class="settings-section-title">数据管理</div>
+        <div class="settings-item" onclick="exportDataJSON()">
+          <span class="settings-icon">📤</span>
+          <div class="settings-info">
+            <div class="settings-label">导出 JSON</div>
+            <div class="settings-desc">导出完整数据备份</div>
+          </div>
+          <span class="settings-arrow">›</span>
+        </div>
+        <div class="settings-item" onclick="exportDataCSV()">
+          <span class="settings-icon">📊</span>
+          <div class="settings-info">
+            <div class="settings-label">导出 CSV</div>
+            <div class="settings-desc">导出为表格，可用 Excel 打开</div>
+          </div>
+          <span class="settings-arrow">›</span>
+        </div>
+        <div class="settings-item" onclick="importDataFromFile()">
+          <span class="settings-icon">📥</span>
+          <div class="settings-info">
+            <div class="settings-label">导入数据</div>
+            <div class="settings-desc">从 JSON 备份恢复</div>
+          </div>
+          <span class="settings-arrow">›</span>
+        </div>
+        <div class="settings-item" onclick="openManageCategories()">
+          <span class="settings-icon">🏷️</span>
+          <div class="settings-info">
+            <div class="settings-label">管理分类</div>
+            <div class="settings-desc">自定义支出/收入分类</div>
+          </div>
+          <span class="settings-arrow">›</span>
+        </div>
+
+        <div class="settings-section-title">其他</div>
+        <div class="settings-item" onclick="checkForUpdate()">
+          <span class="settings-icon">🔄</span>
+          <div class="settings-info">
+            <div class="settings-label">检查更新</div>
+            <div class="settings-desc">刷新页面获取最新版本</div>
+          </div>
+          <span class="settings-arrow">›</span>
+        </div>
+        <div class="settings-item" onclick="clearAllData()">
+          <span class="settings-icon">🗑️</span>
+          <div class="settings-info">
+            <div class="settings-label">清空数据</div>
+            <div class="settings-desc">删除所有交易记录</div>
+          </div>
+          <span class="settings-arrow">›</span>
+        </div>
+        <div class="settings-item" style="cursor:default">
+          <span class="settings-icon">ℹ️</span>
+          <div class="settings-info">
+            <div class="settings-label">关于</div>
+            <div class="settings-desc" id="about-version">我的记账本 · 数据仅存本地</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ==================== FAB ==================== -->
+  <button class="fab" onclick="openAddTransaction()">+</button>
+
+  <!-- ==================== Bottom Tab Bar ==================== -->
+  <nav class="tab-bar">
+    <button class="tab-item active" data-tab="home">
+      <span class="tab-icon">🏠</span>
+      <span>首页</span>
+    </button>
+    <button class="tab-item" data-tab="bills">
+      <span class="tab-icon">📋</span>
+      <span>账单</span>
+    </button>
+    <button class="tab-item" data-tab="assets">
+      <span class="tab-icon">💳</span>
+      <span>资产</span>
+    </button>
+    <button class="tab-item" data-tab="stats">
+      <span class="tab-icon">📊</span>
+      <span>统计</span>
+    </button>
+    <button class="tab-item" data-tab="settings">
+      <span class="tab-icon">⚙️</span>
+      <span>设置</span>
+    </button>
+  </nav>
+</div>
+
+<!-- ==================== 记一笔模态框 ==================== -->
+<div class="modal-overlay" id="tx-modal">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <span class="modal-title" id="tx-modal-title">记一笔</span>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <!-- 类型切换 -->
+      <div class="type-toggle">
+        <button class="type-btn active-expense" onclick="setTxType('expense')">支出</button>
+        <button class="type-btn" onclick="setTxType('income')">收入</button>
+      </div>
+
+      <!-- 金额输入 -->
+      <div class="amount-input-wrap">
+        <span class="currency">¥</span>
+        <input type="text" class="amount-display" id="tx-amount" placeholder="0.00" inputmode="decimal">
+      </div>
+
+      <!-- 分类选择 -->
+      <div class="category-grid" id="category-grid"></div>
+
+      <!-- 账户选择 -->
+      <div class="form-field">
+        <label>账户</label>
+        <div class="account-selector" id="account-selector"></div>
+      </div>
+
+      <!-- 日期 -->
+      <div class="form-field">
+        <label>日期</label>
+        <input type="date" id="tx-date">
+      </div>
+
+      <!-- 备注 -->
+      <div class="form-field">
+        <label>备注</label>
+        <input type="text" id="tx-note" placeholder="选填" maxlength="50">
+      </div>
+
+      <!-- 按钮 -->
+      <button class="btn-primary" onclick="saveTransaction()" id="tx-save-btn">保存</button>
+      <button class="btn-primary btn-danger" onclick="deleteCurrentTransaction()" id="tx-delete-btn"
+              style="margin-top:8px;display:none">删除此记录</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 添加账户模态框 ==================== -->
+<div class="modal-overlay" id="add-account-modal">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <span class="modal-title">添加账户</span>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="account-type-grid" id="account-type-grid">
+        <div class="acc-type-item selected" data-acc-type="cash" onclick="selectAccType('cash')">
+          <span class="ati-icon">💵</span>
+          <span class="ati-name">现金</span>
+        </div>
+        <div class="acc-type-item" data-acc-type="debit" onclick="selectAccType('debit')">
+          <span class="ati-icon">🏦</span>
+          <span class="ati-name">借记卡</span>
+        </div>
+        <div class="acc-type-item" data-acc-type="credit" onclick="selectAccType('credit')">
+          <span class="ati-icon">💳</span>
+          <span class="ati-name">信用卡</span>
+        </div>
+        <div class="acc-type-item" data-acc-type="digital" onclick="selectAccType('digital')">
+          <span class="ati-icon">📱</span>
+          <span class="ati-name">电子账户</span>
+        </div>
+      </div>
+
+      <div class="form-field">
+        <label>账户名称</label>
+        <input type="text" id="new-acc-name" placeholder="如：工资卡、微信零钱" maxlength="20">
+      </div>
+      <div class="form-field">
+        <label>初始余额</label>
+        <input type="text" id="new-acc-balance" placeholder="0.00" inputmode="decimal">
+      </div>
+      <div class="form-field">
+        <label>图标 (emoji)</label>
+        <input type="text" id="new-acc-icon" placeholder="💵" maxlength="2" value="🏦">
+      </div>
+
+      <button class="btn-primary" onclick="saveNewAccount()">添加</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 管理分类模态框 ==================== -->
+<div class="modal-overlay" id="manage-cats-modal">
+  <div class="modal-sheet" style="max-height:85vh">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <span class="modal-title">管理分类</span>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="manage-cats-grid"></div>
+
+      <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
+        <div style="font-size:14px;font-weight:500;margin-bottom:12px">添加新分类</div>
+        <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+          <select id="new-cat-type" style="flex:1;min-width:80px;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:14px">
+            <option value="expense">支出</option>
+            <option value="income">收入</option>
+          </select>
+          <input type="text" id="new-cat-name" placeholder="名称" style="flex:2;min-width:100px;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:14px">
+          <input type="text" id="new-cat-icon" placeholder="图标(emoji)" value="📄" style="flex:1;min-width:60px;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:14px;text-align:center">
+        </div>
+        <button class="btn-primary" onclick="openAddCategory()" style="padding:10px;font-size:14px">添加</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 确认对话框 ==================== -->
+<div class="dialog-overlay" id="dialog-confirm">
+  <div class="dialog-box">
+    <div class="dialog-title" id="dialog-title">确认</div>
+    <div class="dialog-body" id="dialog-body">确定要执行此操作吗？</div>
+    <div class="dialog-actions">
+      <button class="dialog-btn secondary" onclick="closeModal()">取消</button>
+      <button class="dialog-btn primary" id="dialog-confirm-btn">确定</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 账户流水视图 ==================== -->
+<div class="modal-overlay" id="account-flow-modal">
+  <div class="modal-sheet" style="max-height:90vh">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <span class="modal-title" id="flow-modal-title">账户流水</span>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" style="padding-top:8px">
+      <div class="transaction-list" id="flow-tx-list">
+        <div class="empty-state">
+          <div class="empty-icon">📋</div>
+          <div class="empty-text">暂无记录</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== Toast ==================== -->
+<div class="toast" id="toast"></div>
+
+<!-- ==================== Libraries ==================== -->
+<script src="https://unpkg.com/dexie@3.2.4/dist/dexie.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="js/db.js"></script>
+<script src="js/app.js"></script>
+
+</body>
+</html>
