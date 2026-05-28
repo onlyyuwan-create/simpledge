@@ -1,7 +1,7 @@
 // ========== 记账本 Service Worker v2.0 ==========
 // 更新本文件版本号即可触发 App 更新
-const CACHE_NAME = 'account-book-v2';
-const STATIC_CACHE = 'account-book-static-v2';
+const CACHE_NAME = 'simpledge-v1';
+const STATIC_CACHE = 'simpledge-static-v1';
 
 const urlsToCache = [
   './',

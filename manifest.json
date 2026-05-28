@@ -1,23 +1,23 @@
 {
-  "name": "我的记账本",
-  "short_name": "记账本",
-  "description": "本地记账 v2.0 — 资产账户 + 余额联动，数据全在手机上",
-  "start_url": "/account-book/index.html",
+  "name": "度支简账",
+  "short_name": "简账",
+  "description": "度支简账 Simpledge — 本地记账，像钱迹一样好用，数据全在手机上",
+  "start_url": "/simpledge/",
   "display": "standalone",
   "background_color": "#F5F7FA",
   "theme_color": "#4A90D9",
   "orientation": "portrait",
   "icons": [
     {
-      "src": "icons/icon-192.svg",
+      "src": "icons/icon-192.png",
       "sizes": "192x192",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "icons/icon-512.svg",
+      "src": "icons/icon-512.png",
       "sizes": "512x512",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "purpose": "any maskable"
     }
   ]

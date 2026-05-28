@@ -1,6 +1,6 @@
 // ========== 记账本 v2.0 — 主应用逻辑（含资产账户） ==========
 
-const APP_VERSION = 'v2.0 (2026.05)';
+const APP_VERSION = 'v2.0 (2026.05) · 度支简账 Simpledge';
 
 let currentUser = { name: '我', avatar: '👤' };
 let currentTab = 'home';
@@ -67,7 +67,7 @@ async function switchTab(tab) {
   const pageEl = document.getElementById(`page-${tab}`);
   if (pageEl) pageEl.classList.add('active');
 
-  const titles = { home: '我的记账本', bills: '账单', assets: '资产', stats: '统计', settings: '设置' };
+  const titles = { home: '度支简账', bills: '账单', assets: '资产', stats: '统计', settings: '设置' };
   document.getElementById('page-title').textContent = titles[tab] || '记账本';
 
   if (tab === 'home') await showHome();
