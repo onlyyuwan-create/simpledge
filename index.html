@@ -91,12 +91,24 @@
         <button class="stat-nav-btn" id="bills-month-next">›</button>
       </div>
 
+      <div class="cal-toggle" id="bills-view-toggle">
+        <button class="on" data-view="list" onclick="switchBillsView('list')">📋 列表</button>
+        <button data-view="calendar" onclick="switchBillsView('calendar')">📅 日历</button>
+      </div>
+
       <div class="filter-chips">
         <span class="chip active" data-filter="all">全部</span>
         <span class="chip" data-filter="expense">支出</span>
         <span class="chip" data-filter="income">收入</span>
       </div>
 
+      <div class="cal-bar" id="cal-bar" style="display:none">
+        <button class="stat-nav-btn" onclick="calPrevMonth()">‹</button>
+        <span class="stat-month-label" id="cal-month-label">2026年5月</span>
+        <button class="stat-nav-btn" onclick="calNextMonth()">›</button>
+      </div>
+      <div class="cal-grid" id="cal-grid" style="display:none"></div>
+      <div class="cal-foot" id="cal-foot" style="display:none"></div>
       <div class="transaction-list" id="bills-tx-list">
         <div class="empty-state">
           <div class="empty-icon">📋</div>
@@ -117,6 +129,13 @@
         <div class="account-grid" id="account-grid"></div>
         <div class="add-account-btn-wrap">
           <button class="add-account-btn" onclick="openAddAccountModal()">➕ 添加账户</button>
+        </div>
+
+        <!-- 债务概览 -->
+        <div class="section-title"><span>债权债务</span></div>
+        <div id="debt-summary"></div>
+        <div class="add-account-btn-wrap">
+          <button class="add-account-btn" onclick="openAddDebtModal()">📝 记一笔借入/出</button>
         </div>
       </div>
     </div>
@@ -162,6 +181,19 @@
       </div>
 
       <div class="category-breakdown" id="cat-breakdown"></div>
+
+      <!-- 预算概览 -->
+      <div class="section-title"><span>预算管理</span></div>
+      <div id="budget-section">
+        <div class="bp-card">
+          <div class="bp-hdr"><span class="l">本月预算</span><span class="a" id="budget-status">未设置</span></div>
+          <div class="bp-bar"><div class="bp-fill" id="budget-bar" style="width:0%"></div></div>
+          <div class="bp-ft"><span id="budget-spent">¥0</span><span id="budget-remain">¥0</span></div>
+        </div>
+        <div class="add-account-btn-wrap">
+          <button class="add-account-btn" onclick="openBudgetModal()">📊 设置预算</button>
+        </div>
+      </div>
     </div>
 
     <!-- ===== 设置 ===== -->
@@ -210,13 +242,13 @@
         </div>
 
         <div class="settings-section-title">其他</div>
-        <div class="settings-item" onclick="checkForUpdate()">
-          <span class="settings-icon">🔄</span>
+        <div class="settings-item" onclick="toggleDarkMode()">
+          <span class="settings-icon" id="dark-mode-icon">🌙</span>
           <div class="settings-info">
-            <div class="settings-label">检查更新</div>
-            <div class="settings-desc">刷新页面获取最新版本</div>
+            <div class="settings-label">暗色主题</div>
+            <div class="settings-desc" id="dark-mode-desc">点击切换夜间模式</div>
           </div>
-          <span class="settings-arrow">›</span>
+          <span class="settings-arrow" id="dark-mode-status">›</span>
         </div>
         <div class="settings-item" onclick="clearAllData()">
           <span class="settings-icon">🗑️</span>
@@ -311,10 +343,23 @@
         <div class="account-selector" id="account-selector"></div>
       </div>
 
-      <!-- 日期 -->
-      <div class="form-field">
-        <label>日期</label>
-        <input type="date" id="tx-date">
+      <!-- 币种 + 日期 -->
+      <div style="display:flex;gap:10px">
+        <div class="form-field" style="flex:1">
+          <label>日期</label>
+          <input type="date" id="tx-date">
+        </div>
+        <div class="form-field" style="flex:0 0 90px">
+          <label>币种</label>
+          <select id="tx-currency" style="width:100%;padding:12px 8px;border:1px solid var(--border);border-radius:10px;font-size:14px;outline:none;background:var(--card);color:var(--text)">
+            <option value="CNY">¥ CNY</option>
+            <option value="USD">$ USD</option>
+            <option value="EUR">€ EUR</option>
+            <option value="GBP">£ GBP</option>
+            <option value="JPY">JPY</option>
+            <option value="HKD">HK$</option>
+          </select>
+        </div>
       </div>
 
       <!-- 备注 -->
@@ -327,6 +372,55 @@
       <button class="btn-primary" onclick="saveTransaction()" id="tx-save-btn">保存</button>
       <button class="btn-primary btn-danger" onclick="deleteCurrentTransaction()" id="tx-delete-btn"
               style="margin-top:8px;display:none">删除此记录</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 债务模态框 ==================== -->
+<div class="modal-overlay" id="debt-modal">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <span class="modal-title">记一笔债务</span>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="type-toggle">
+        <button class="type-btn active-expense" onclick="setDebtType('lend')">借出</button>
+        <button class="type-btn" onclick="setDebtType('borrow')">借入</button>
+      </div>
+      <div class="form-field">
+        <label>对方</label>
+        <input type="text" id="debt-person" placeholder="姓名" maxlength="20">
+      </div>
+      <div class="amount-input-wrap" style="border-bottom:none;padding:5px 0">
+        <span class="currency">¥</span>
+        <input type="text" class="amount-display" id="debt-amount" placeholder="0.00" inputmode="decimal">
+      </div>
+      <div class="form-field">
+        <label>备注</label>
+        <input type="text" id="debt-note" placeholder="选填">
+      </div>
+      <button class="btn-primary" onclick="saveDebt()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 预算模态框 ==================== -->
+<div class="modal-overlay" id="budget-modal">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <span class="modal-title">设置预算</span>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-field">
+        <label>月度预算总额 (¥)</label>
+        <input type="text" id="budget-total" placeholder="如: 5000" inputmode="decimal">
+      </div>
+      <button class="btn-primary" onclick="saveBudget()">保存</button>
+      <button class="btn-primary btn-danger" onclick="clearBudget()" style="margin-top:8px">清除预算</button>
     </div>
   </div>
 </div>

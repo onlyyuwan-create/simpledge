@@ -30,6 +30,15 @@ async function initApp() {
   registerEvents();
   await showHome();
 
+  // 加载暗色主题状态
+  const dark = await getSetting('darkMode', '0');
+  if (dark === '1') {
+    isDark = true;
+    document.documentElement.setAttribute('data-theme', 'dark');
+    document.getElementById('dark-mode-icon').textContent = '☀️';
+    document.getElementById('dark-mode-desc').textContent = '已开启夜间模式';
+  }
+
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').then(reg => {
       // 检测到新 SW 等待激活
@@ -147,6 +156,9 @@ async function showAssets() {
   });
 
   grid.innerHTML = html;
+
+  // 债务概览
+  renderDebtSummary();
 }
 
 // ========== 账户流水 ==========
@@ -330,6 +342,7 @@ function renderTxItem(tx, catMap, accMap) {
 async function showStats() {
   document.getElementById('stat-month-label').textContent = `${currentStatYear}年${currentStatMonth}月`;
   await loadStatsData();
+  await renderBudget();
 }
 
 async function loadStatsData() {
@@ -738,6 +751,7 @@ async function saveTransaction() {
       toAccountId: toId,
       date: date,
       note: note || ('转账'),
+      currency: document.getElementById('tx-currency').value || 'CNY',
       time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
     };
   } else {
@@ -754,6 +768,7 @@ async function saveTransaction() {
       accountId: selectedAccountId,
       date: date,
       note: note,
+      currency: document.getElementById('tx-currency').value || 'CNY',
       time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
     };
   }
@@ -935,6 +950,252 @@ function clearAllData() {
     closeModal();
     await refreshCurrentPage();
   });
+}
+
+// ========== 暗色主题 ==========
+let isDark = false;
+async function toggleDarkMode() {
+  isDark = !isDark;
+  document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+  document.getElementById('dark-mode-icon').textContent = isDark ? '☀️' : '🌙';
+  document.getElementById('dark-mode-desc').textContent = isDark ? '已开启夜间模式' : '点击切换夜间模式';
+  await setSetting('darkMode', isDark ? '1' : '0');
+}
+
+// ========== 日历视图 ==========
+let calYear, calMonth, calSelDate;
+function switchBillsView(view) {
+  document.querySelectorAll('.cal-toggle button').forEach(b => b.classList.remove('on'));
+  document.querySelector(`.cal-toggle button[data-view="${view}"]`).classList.add('on');
+
+  if (view === 'calendar') {
+    document.getElementById('bills-tx-list').style.display = 'none';
+    document.getElementById('cal-bar').style.display = 'flex';
+    const grid = document.getElementById('cal-grid'); grid.style.display = 'grid';
+    document.getElementById('cal-foot').style.display = 'flex';
+    const now = new Date();
+    calYear = now.getFullYear(); calMonth = now.getMonth() + 1; calSelDate = null;
+    renderCalendar(calYear, calMonth);
+  } else {
+    document.getElementById('bills-tx-list').style.display = 'block';
+    document.getElementById('cal-bar').style.display = 'none';
+    document.getElementById('cal-grid').style.display = 'none';
+    document.getElementById('cal-foot').style.display = 'none';
+  }
+}
+
+async function renderCalendar(year, month) {
+  const grid = document.getElementById('cal-grid');
+  const firstDay = new Date(year, month - 1, 1).getDay();
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const daysInPrev = new Date(year, month - 1, 0).getDate();
+  const today = formatDate(new Date());
+  const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
+
+  // Get data for this month
+  const txs = await getTransactionsByMonth(year, month);
+  const dailyData = {};
+  txs.forEach(tx => {
+    if (!dailyData[tx.date]) dailyData[tx.date] = { expense: 0, income: 0 };
+    if (tx.type === 'expense' || tx.type === 'transfer') dailyData[tx.date].expense += tx.amount;
+    else dailyData[tx.date].income += tx.amount;
+  });
+
+  let html = weekDays.map(d => `<div class="cal-hdr">${d}</div>`).join('');
+
+  // Previous month days
+  for (let i = firstDay - 1; i >= 0; i--) {
+    html += `<div class="cal-cell off">${daysInPrev - i}</div>`;
+  }
+  // Current month days
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const data = dailyData[dateStr];
+    const isToday = dateStr === today;
+    const isSel = dateStr === calSelDate;
+    let cls = 'cal-cell';
+    if (isToday) cls += ' today';
+    if (isSel) cls += ' sel';
+    let dots = '';
+    if (data) {
+      if (data.expense > 0 && data.income > 0) dots = '<span class="cdot r"></span><span class="cdot g" style="left:60%"></span>';
+      else if (data.expense > 0) dots = '<span class="cdot r"></span>';
+      else if (data.income > 0) dots = '<span class="cdot g"></span>';
+    }
+    html += `<div class="${cls}" onclick="selectCalDay('${dateStr}')"><div style="margin-top:4px">${d}</div>${dots}</div>`;
+  }
+  // Next month days
+  const totalCells = firstDay + daysInMonth;
+  const remaining = (7 - totalCells % 7) % 7;
+  for (let d = 1; d <= remaining; d++) {
+    html += `<div class="cal-cell off">${d}</div>`;
+  }
+
+  grid.innerHTML = html;
+  document.getElementById('cal-month-label').textContent = `${year}年${month}月`;
+  document.getElementById('cal-foot').innerHTML =
+    `<span>📅 总支出 ¥${Object.values(dailyData).reduce((s,d) => s + d.expense, 0).toFixed(2)}</span>` +
+    `<span>${calSelDate ? '点击查看详情' : '点击日期查看'}</span>`;
+}
+
+function calPrevMonth() { calMonth--; if (calMonth < 1) { calMonth = 12; calYear--; } renderCalendar(calYear, calMonth); }
+function calNextMonth() { calMonth++; if (calMonth > 12) { calMonth = 1; calYear++; } renderCalendar(calYear, calMonth); }
+
+async function selectCalDay(dateStr) {
+  calSelDate = dateStr;
+  renderCalendar(calYear, calMonth);
+  const txs = await getTransactions({ startDate: dateStr, endDate: dateStr });
+  const cats = await getAllCategories();
+  const catMap = {}; cats.forEach(c => { catMap[c.id] = c; });
+  const accounts = await getAllAccounts();
+  const accMap = {}; accounts.forEach(a => { accMap[a.id] = a; });
+
+  const container = document.getElementById('bills-tx-list');
+  container.style.display = 'block';
+  if (txs.length === 0) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-icon">📅</div><div class="empty-text">${dateStr} 没有记录</div></div>`;
+  } else {
+    let html = `<div class="date-group-header">${dateStr} ${getWeekDay(dateStr)} · ${txs.length}笔</div>`;
+    txs.sort((a,b) => (b.createdAt||'').localeCompare(a.createdAt||''));
+    txs.forEach(tx => { html += renderTxItem(tx, catMap, accMap); });
+    container.innerHTML = html;
+  }
+}
+
+async function renderDebtSummary() {
+  const debts = JSON.parse(await getSetting('debts', '[]'));
+  const container = document.getElementById('debt-summary');
+
+  if (debts.length === 0) {
+    container.innerHTML = '<div class="empty-state" style="padding:20px"><div class="empty-text">暂无债务记录</div></div>';
+    return;
+  }
+
+  let totalLend = 0, totalBorrow = 0;
+  debts.forEach(d => {
+    const remain = d.amount - (d.repaid || 0);
+    if (d.type === 'lend') totalLend += remain;
+    else totalBorrow += remain;
+  });
+
+  let html = `<div class="d-sum">
+    <div class="d-card"><div class="dl">别人欠你</div><div class="da g">¥${totalLend.toFixed(2)}</div></div>
+    <div class="d-card"><div class="dl">你欠别人</div><div class="da r">¥${totalBorrow.toFixed(2)}</div></div>
+  </div>`;
+
+  debts.sort((a,b) => b.date.localeCompare(a.date)).slice(0, 10).forEach(d => {
+    const remain = d.amount - (d.repaid || 0);
+    const isLend = d.type === 'lend';
+    const status = remain <= 0 ? '✅ 已还清' : '⌛ 未还清';
+    html += `<div class="d-item" onclick="repayDebt(${d.id})">
+      <div class="di ${isLend ? 'g' : 'r'}">${isLend ? '📤' : '📥'}</div>
+      <div class="dx"><div class="dn">${d.person}</div><div class="dd">${d.note || d.date}</div></div>
+      <div class="da2 ${isLend ? 'g' : 'r'}">¥${remain.toFixed(2)}</div>
+      <div class="ds">${status}</div>
+    </div>`;
+  });
+  container.innerHTML = html;
+}
+
+// ========== 债务管理 ==========
+let debtType = 'lend';
+function setDebtType(type) { debtType = type; }
+
+async function openAddDebtModal() {
+  debtType = 'lend';
+  document.getElementById('debt-person').value = '';
+  document.getElementById('debt-amount').value = '';
+  document.getElementById('debt-note').value = '';
+  document.querySelectorAll('#debt-modal .type-btn').forEach((b,i) => {
+    b.className = 'type-btn';
+    if (i === 0) b.classList.add('active-expense');
+  });
+  document.getElementById('debt-modal').classList.add('open');
+}
+
+async function saveDebt() {
+  const person = document.getElementById('debt-person').value.trim();
+  const amount = parseFloat(document.getElementById('debt-amount').value);
+  if (!person) { showToast('请输入对方姓名'); return; }
+  if (!amount || amount <= 0) { showToast('请输入金额'); return; }
+
+  const debts = JSON.parse(await getSetting('debts', '[]'));
+  debts.push({
+    id: Date.now(),
+    type: debtType,
+    person,
+    amount: Math.round(amount * 100) / 100,
+    note: document.getElementById('debt-note').value.trim(),
+    repaid: 0,
+    date: formatDate(new Date()),
+    createdAt: new Date().toISOString()
+  });
+  await setSetting('debts', JSON.stringify(debts));
+  showToast('已记录');
+  closeModal();
+  showAssets();
+}
+
+async function repayDebt(id) {
+  const debts = JSON.parse(await getSetting('debts', '[]'));
+  const debt = debts.find(d => d.id === id);
+  if (!debt) return;
+  showConfirm('还款', `当前欠款 ¥${(debt.amount - debt.repaid).toFixed(2)}\n输入还款金额:`, async () => {
+    // Simple: mark as fully repaid
+    debt.repaid = debt.amount;
+    await setSetting('debts', JSON.stringify(debts));
+    showToast('已标记为已还清');
+    showAssets();
+  });
+}
+
+// ========== 预算管理 ==========
+async function openBudgetModal() {
+  const budget = await getSetting('monthlyBudget', '0');
+  document.getElementById('budget-total').value = budget === '0' ? '' : budget;
+  document.getElementById('budget-modal').classList.add('open');
+}
+
+async function saveBudget() {
+  const val = document.getElementById('budget-total').value.trim();
+  if (!val || parseFloat(val) <= 0) { showToast('请输入预算金额'); return; }
+  await setSetting('monthlyBudget', parseFloat(val).toFixed(2));
+  showToast('预算已设置');
+  closeModal();
+  showStats();
+}
+
+async function clearBudget() {
+  await setSetting('monthlyBudget', '0');
+  showToast('预算已清除');
+  closeModal();
+  showStats();
+}
+
+async function renderBudget() {
+  const now = new Date();
+  const stats = await getMonthStats(now.getFullYear(), now.getMonth() + 1);
+  const budget = parseFloat(await getSetting('monthlyBudget', '0'));
+
+  const spentEl = document.getElementById('budget-spent');
+  const remainEl = document.getElementById('budget-remain');
+  const barEl = document.getElementById('budget-bar');
+  const statusEl = document.getElementById('budget-status');
+
+  if (budget <= 0) {
+    statusEl.textContent = '未设置';
+    barEl.style.width = '0%';
+    spentEl.textContent = `¥${stats.totalExpense.toFixed(2)}`;
+    remainEl.textContent = '设置预算';
+    return;
+  }
+
+  const pct = Math.min(100, (stats.totalExpense / budget) * 100);
+  statusEl.textContent = `${pct.toFixed(1)}%`;
+  barEl.style.width = pct + '%';
+  barEl.className = 'bp-fill' + (pct > 90 ? ' d' : pct > 70 ? ' w' : '');
+  spentEl.textContent = `已支出 ¥${stats.totalExpense.toFixed(2)}`;
+  remainEl.textContent = `预算 ¥${budget.toFixed(2)} · 剩余 ¥${Math.max(0, budget - stats.totalExpense).toFixed(2)}`;
 }
 
 // ========== 工具函数 ==========
