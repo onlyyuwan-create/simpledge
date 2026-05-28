@@ -8,6 +8,8 @@ jobs:
   build:
     name: 打包度支简账 APK
     runs-on: ubuntu-latest
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
 
     steps:
       - name: 检出代码
@@ -32,13 +34,18 @@ jobs:
       - name: 设置 Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: 缓存 Gradle
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('simpledge-android/**/*.gradle*') }}
+      - name: 接受 SDK 许可
+        run: |
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1 || true
+          yes | $ANDROID_HOME/tools/bin/sdkmanager --licenses > /dev/null 2>&1 || true
+        env:
+          ANDROID_HOME: /usr/local/lib/android/sdk
+
+      - name: 安装 Android SDK 33
+        run: |
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-33" "build-tools;33.0.2" > /dev/null 2>&1 || true
+        env:
+          ANDROID_HOME: /usr/local/lib/android/sdk
 
       - name: 构建 APK
         uses: gradle/gradle-build-action@v2
