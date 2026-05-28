@@ -137,6 +137,10 @@
         <div class="add-account-btn-wrap">
           <button class="add-account-btn" onclick="openAddDebtModal()">📝 记一笔借入/出</button>
         </div>
+
+        <!-- 报销管理 -->
+        <div class="section-title"><span>🧾 报销管理</span></div>
+        <div id="reimbursement-section"></div>
       </div>
     </div>
 
@@ -362,7 +366,13 @@
         </div>
       </div>
 
-      <!-- 备注 -->
+      <!-- 报销标记 + 备注 -->
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:14px;cursor:pointer">
+          <input type="checkbox" id="tx-reimbursable" style="width:18px;height:18px">
+          🧾 可报销
+        </label>
+      </div>
       <div class="form-field">
         <label>备注</label>
         <input type="text" id="tx-note" placeholder="选填" maxlength="50">

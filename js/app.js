@@ -159,6 +159,7 @@ async function showAssets() {
 
   // 债务概览
   renderDebtSummary();
+  renderReimbursements();
 }
 
 // ========== 账户流水 ==========
@@ -737,6 +738,8 @@ async function saveTransaction() {
   if (!amount || amount <= 0) { showToast('请输入金额'); return; }
   if (currentTxType !== 'transfer' && !selectedCategoryId) { showToast('请选择分类'); return; }
 
+  const isReimbursable = document.getElementById('tx-reimbursable') ? document.getElementById('tx-reimbursable').checked : false;
+
   let txData;
   if (currentTxType === 'transfer') {
     // 转账
@@ -774,13 +777,25 @@ async function saveTransaction() {
   }
 
   try {
+    let newId;
     if (editingTransactionId) {
       await updateTransaction(editingTransactionId, txData);
+      newId = editingTransactionId;
       showToast('已更新');
     } else {
-      await addTransaction(txData);
+      newId = await addTransaction(txData);
       showToast('已记录');
     }
+
+    // 保存报销状态
+    if (isReimbursable && currentTxType === 'expense') {
+      const reimbs = JSON.parse(await getSetting('reimbursements', '{}'));
+      if (!reimbs[newId]) {
+        reimbs[newId] = { status: 'pending', txId: newId, amount: txData.amount, date: txData.date, note: txData.note || '' };
+        await setSetting('reimbursements', JSON.stringify(reimbs));
+      }
+    }
+
     closeModal();
     await refreshCurrentPage();
   } catch (e) {
@@ -1196,6 +1211,55 @@ async function renderBudget() {
   barEl.className = 'bp-fill' + (pct > 90 ? ' d' : pct > 70 ? ' w' : '');
   spentEl.textContent = `已支出 ¥${stats.totalExpense.toFixed(2)}`;
   remainEl.textContent = `预算 ¥${budget.toFixed(2)} · 剩余 ¥${Math.max(0, budget - stats.totalExpense).toFixed(2)}`;
+}
+
+// ========== 报销管理 ==========
+async function renderReimbursements() {
+  const container = document.getElementById('reimbursement-section');
+  const reimbs = JSON.parse(await getSetting('reimbursements', '{}'));
+  const ids = Object.keys(reimbs);
+
+  if (ids.length === 0) {
+    container.innerHTML = '<div class="empty-state" style="padding:16px"><div class="empty-text">暂无待报销记录</div></div>';
+    return;
+  }
+
+  let totalPending = 0, totalReimbursed = 0;
+  ids.forEach(id => {
+    if (reimbs[id].status === 'reimbursed') totalReimbursed += reimbs[id].amount;
+    else totalPending += reimbs[id].amount;
+  });
+
+  let html = `<div class="d-sum">
+    <div class="d-card"><div class="dl">待报销</div><div class="da r">¥${totalPending.toFixed(2)}</div></div>
+    <div class="d-card"><div class="dl">已报销</div><div class="da g">¥${totalReimbursed.toFixed(2)}</div></div>
+  </div>`;
+
+  ids.sort().reverse().forEach(id => {
+    const r = reimbs[id];
+    const isDone = r.status === 'reimbursed';
+    html += `<div class="d-item" onclick="${isDone ? '' : "markReimbursed('" + id + "')"}">
+      <div class="di ${isDone ? 'g' : 'r'}">${isDone ? '✅' : '🧾'}</div>
+      <div class="dx">
+        <div class="dn">${r.note || '报销'}</div>
+        <div class="dd">${r.date} · ${isDone ? '已报销' : '待报销'}</div>
+      </div>
+      <div class="da2 ${isDone ? 'g' : 'r'}">¥${(isDone ? r.amount : r.amount).toFixed(2)}</div>
+    </div>`;
+  });
+  container.innerHTML = html;
+}
+
+async function markReimbursed(txId) {
+  showConfirm('标记已报销', '确定这笔已经报销到账了吗？', async () => {
+    const reimbs = JSON.parse(await getSetting('reimbursements', '{}'));
+    if (reimbs[txId]) {
+      reimbs[txId].status = 'reimbursed';
+      await setSetting('reimbursements', JSON.stringify(reimbs));
+      showToast('已标记为已报销');
+      showAssets();
+    }
+  });
 }
 
 // ========== 工具函数 ==========
