@@ -16,12 +16,12 @@ jobs:
       - name: 复制网页文件到 Android 资源目录
         run: |
           mkdir -p simpledge-android/app/src/main/assets
-          cp -r account-book/index.html simpledge-android/app/src/main/assets/
-          cp -r account-book/css simpledge-android/app/src/main/assets/
-          cp -r account-book/js simpledge-android/app/src/main/assets/
-          cp -r account-book/icons simpledge-android/app/src/main/assets/
-          cp account-book/manifest.json simpledge-android/app/src/main/assets/
-          cp account-book/sw.js simpledge-android/app/src/main/assets/
+          cp -r index.html simpledge-android/app/src/main/assets/
+          cp -r css simpledge-android/app/src/main/assets/
+          cp -r js simpledge-android/app/src/main/assets/
+          cp -r icons simpledge-android/app/src/main/assets/
+          cp manifest.json simpledge-android/app/src/main/assets/
+          cp sw.js simpledge-android/app/src/main/assets/
 
       - name: 设置 JDK 17
         uses: actions/setup-java@v4
