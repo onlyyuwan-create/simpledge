@@ -409,7 +409,15 @@ async function renderPieChart(stats, type) {
 
   const catAmounts = type === 'expense' ? stats.expenseByCategory : stats.incomeByCategory;
   const total = type === 'expense' ? stats.totalExpense : stats.totalIncome;
-  if (total === 0 || Object.keys(catAmounts).length === 0) return;
+  if (total === 0 || Object.keys(catAmounts).length === 0) {
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.font = '14px sans-serif';
+    ctx.fillStyle = '#BDC3C7';
+    ctx.textAlign = 'center';
+    ctx.fillText('📊 本月暂无数据', canvas.width/2, canvas.height/2);
+    return;
+  }
 
   const cats = await getAllCategories(type);
   const catMap = {};
@@ -447,6 +455,16 @@ async function renderTrendChart() {
   if (trendChart) { trendChart.destroy(); }
 
   const daily = await getDailyStats(currentStatYear, currentStatMonth);
+  const hasData = Object.values(daily).some(d => d.expense > 0 || d.income > 0);
+  if (!hasData) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.font = '14px sans-serif';
+    ctx.fillStyle = '#BDC3C7';
+    ctx.textAlign = 'center';
+    ctx.fillText('📈 本月暂无数据', canvas.width/2, canvas.height/2);
+    return;
+  }
+
   const days = Object.keys(daily).sort();
   const dayLabels = days.map(d => parseInt(d.slice(8)) + '日');
   const expenseData = days.map(d => daily[d].expense);
