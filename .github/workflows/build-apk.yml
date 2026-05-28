@@ -1,4 +1,4 @@
-name: 构建 APK (PWABuilder API)
+name: 构建 APK
 
 on:
   push:
@@ -7,46 +7,55 @@ on:
 
 jobs:
   build:
-    name: 打包度支简账
+    name: 打包度支简账 APK
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: 通过 PWABuilder API 生成 APK
+      - name: 复制网页文件到 Android 资源目录
         run: |
-          # 调用 PWABuilder 云 API 生成 Android APK
-          curl -s -X POST "https://pwabuilder.com/api/v1/package/android" \
-            -H "Content-Type: application/json" \
-            -d '{"url":"https://onlyyuwan-create.github.io/simpledge/"}' \
-            -o package_response.json
-          
-          cat package_response.json
+          mkdir -p android/app/src/main/assets
+          cp -r index.html android/app/src/main/assets/
+          cp -r css android/app/src/main/assets/
+          cp -r js android/app/src/main/assets/
+          cp -r icons android/app/src/main/assets/
+          cp manifest.json android/app/src/main/assets/
+          cp sw.js android/app/src/main/assets/
 
-      - name: 下载 APK
+      - name: 设置 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: 17
+          distribution: 'temurin'
+
+      - name: 设置 Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: 接受 SDK 许可
+        run: yes | $ANDROID_HOME/tools/bin/sdkmanager --licenses > /dev/null 2>&1 || true
+        env:
+          ANDROID_HOME: /usr/local/lib/android/sdk
+
+      - name: 安装 SDK 33
+        run: $ANDROID_HOME/tools/bin/sdkmanager "platforms;android-33" "build-tools;33.0.2" > /dev/null 2>&1 || true
+        env:
+          ANDROID_HOME: /usr/local/lib/android/sdk
+
+      - name: 构建 APK
+        uses: gradle/gradle-build-action@v2
+        with:
+          arguments: assembleRelease
+          build-root-directory: android
+          gradle-version: 8.1
+
+      - name: 签名并输出 APK
         run: |
-          # 从 API 响应中提取下载链接
-          URL=$(python3 -c "
-import json
-with open('package_response.json') as f:
-    d = json.load(f)
-print(d.get('url', d.get('downloadUrl', d.get('package_url', ''))))
-print(d.get('message', ''))
-" 2>/dev/null || echo "")
-          
-          if [ -n "$URL" ]; then
-            curl -sL "$URL" -o simpledge.apk
-            ls -la simpledge.apk
-            mkdir -p output
-            mv simpledge.apk output/
-          else
-            echo "API返回:"
-            cat package_response.json
-          fi
+          cp android/app/build/outputs/apk/release/app-release-unsigned.apk \
+             android/app/build/outputs/apk/release/度支简账.apk
 
       - name: 上传 APK
         uses: actions/upload-artifact@v4
-        if: success()
         with:
           name: 度支简账-APK
-          path: output/*.apk
+          path: android/app/build/outputs/apk/release/度支简账.apk

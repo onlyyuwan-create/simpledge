@@ -12,8 +12,8 @@ const urlsToCache = [
   './manifest.json',
   './icons/icon-192.svg',
   './icons/icon-512.svg',
-  'https://unpkg.com/dexie@3.2.4/dist/dexie.js',
-  'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js'
+  './js/dexie.js',
+  './js/chart.js'
 ];
 
 // 安装：缓存核心文件
